@@ -1,0 +1,11 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = grub
+[Action]
+Description = Unrestricting GRUB's linux boot entries...
+Depends = sed
+When = PostTransaction
+Exec = /usr/bin/sed -i -e 's/--class os/--class os --unrestricted/g' /etc/grub.d/10_linux
+

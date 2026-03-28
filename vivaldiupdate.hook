@@ -1,0 +1,11 @@
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Target = *
+
+[Action]
+Description = Injecting custom JS into Vivaldi
+When = PostTransaction
+Exec = /usr/bin/sh -c '/etc/pacman.d/hooks.bin/vivaldimods.sh'

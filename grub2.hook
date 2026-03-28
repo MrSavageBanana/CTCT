@@ -1,0 +1,11 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = grub
+[Action]
+Description = Re-restricting GRUB's submenus...
+Depends = sed
+When = PostTransaction
+Exec = /usr/bin/sed -i "s/menuentry_id_option 'gnulinux-advanced/submenu_id_option 'gnulinux-advanced/g" /etc/grub.d/10_linux
+

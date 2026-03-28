@@ -1,0 +1,12 @@
+[Unit]
+Description=Close tabs service
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=/usr/bin/bash /home/shayan/Downloads/Code/CTCT/Modules/matt_damon.sh
+Restart=always 
+RestartSec=1
+User=root
+
+[Install]
+WantedBy=multi-user.target
