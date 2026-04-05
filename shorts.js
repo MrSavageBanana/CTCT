@@ -5,7 +5,7 @@
 // ============================================================
 
 (function () {
-  'use strict';
+  "use strict";
 
   function shortsRestrictor() {
     if (window.__yt_shorts_restrictor) return;
@@ -17,7 +17,7 @@
     // comment box) purely via pointer-events + opacity — this stays
     // exactly as-is and is not touched by the click interceptor below.
     // ─────────────────────────────────────────────────────────────────
-    const style = document.createElement('style');
+    const style = document.createElement("style");
     style.textContent = `
       like-button-view-model button,
       dislike-button-view-model button,
@@ -49,10 +49,10 @@
     // there since those buttons are standard DOM with no parent handlers.
     // ─────────────────────────────────────────────────────────────────
     const VIDEO_CONTROL_SELECTORS = [
-      'like-button-view-model',
-      'dislike-button-view-model',
-      '#navigation-button-up',
-      '#navigation-button-down',
+      "like-button-view-model",
+      "dislike-button-view-model",
+      "#navigation-button-up",
+      "#navigation-button-down",
     ];
 
     function isVideoControl(el) {
@@ -62,30 +62,40 @@
             if (el.matches && el.matches(sel)) return true;
           } catch (e) {}
         }
-        el = el.parentElement || (el.getRootNode && el.getRootNode().host) || null;
+        el =
+          el.parentElement || (el.getRootNode && el.getRootNode().host) || null;
       }
       return false;
     }
 
-    document.addEventListener('click', function (e) {
-      // composedPath() gives the full path including through shadow roots
-      const path = e.composedPath ? e.composedPath() : [e.target];
-      for (const node of path) {
-        if (node.nodeType !== 1) continue; // elements only
-        if (isVideoControl(node)) {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          return;
+    document.addEventListener(
+      "click",
+      function (e) {
+        // composedPath() gives the full path including through shadow roots
+        const path = e.composedPath ? e.composedPath() : [e.target];
+        for (const node of path) {
+          if (node.nodeType !== 1) continue; // elements only
+          if (isVideoControl(node)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            return;
+          }
         }
-      }
-    }, true /* capture — runs before any YouTube handler */);
+      },
+      true /* capture — runs before any YouTube handler */,
+    );
 
     // ── Block keyboard navigation between shorts ──────────────────────
-    const NAV_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown']);
+    const NAV_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown"]);
 
     function blockNavKeys(e) {
-      const tag = e.target ? e.target.tagName.toUpperCase() : '';
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
+      const tag = e.target ? e.target.tagName.toUpperCase() : "";
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        (e.target && e.target.isContentEditable)
+      )
+        return;
       if (NAV_KEYS.has(e.key)) {
         e.stopImmediatePropagation();
         e.preventDefault();
@@ -95,7 +105,8 @@
     // ── Block scroll navigation between shorts ────────────────────────
     function isInsideComments(el) {
       while (el) {
-        if (el.tagName === 'YTD-ENGAGEMENT-PANEL-SECTION-LIST-RENDERER') return true;
+        if (el.tagName === "YTD-ENGAGEMENT-PANEL-SECTION-LIST-RENDERER")
+          return true;
         el = el.parentElement;
       }
       return false;
@@ -107,23 +118,28 @@
       e.preventDefault();
     }
 
-    document.addEventListener('keydown', blockNavKeys, true);
-    document.addEventListener('wheel', blockScroll, { capture: true, passive: false });
+    document.addEventListener("keydown", blockNavKeys, true);
+    document.addEventListener("wheel", blockScroll, {
+      capture: true,
+      passive: false,
+    });
   }
 
   // ── Injection logic ───────────────────────────────────────────────
   function injectIntoTab(tabId) {
-    chrome.scripting.executeScript({
-      target: { tabId: tabId },
-      func: shortsRestrictor,
-      world: 'MAIN',
-    }).catch(() => {});
+    chrome.scripting
+      .executeScript({
+        target: { tabId: tabId },
+        func: shortsRestrictor,
+        world: "MAIN",
+      })
+      .catch(() => {});
   }
 
   chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    const url = tab.url || changeInfo.url || '';
+    const url = tab.url || changeInfo.url || "";
     if (!url || !/youtube\.com\/shorts\//.test(url)) return;
-    if (changeInfo.status === 'loading' || changeInfo.status === 'complete') {
+    if (changeInfo.status === "loading" || changeInfo.status === "complete") {
       injectIntoTab(tabId);
     }
   });
@@ -135,8 +151,7 @@
           injectIntoTab(details.tabId);
         }
       },
-      { url: [{ hostContains: 'youtube.com' }] }
+      { url: [{ hostContains: "youtube.com" }] },
     );
   }
-
 })();
