@@ -18,9 +18,10 @@
       domain: "www.reddit.com",
       pattern: "^https?://www\\.reddit\\.com/$",
       selectors: [
-        "div.grid-container.theme-rpl.grid.flex-nav-expanded",
-        "#notifications-inbox-button",
-        "div.pe-lg.flex.gap-xs.items-center.justify-start",
+        "#left-sidebar",
+        "#flex-left-nav-container",
+        "#left-sidebar-container",
+        "nav.h-header-large.flex.items-center",
       ],
     },
     // --- Add more domains below this line ---
@@ -28,27 +29,40 @@
       domain: "www.reddit.com",
       pattern: "^https?://www\.reddit\.com/r/popular/$",
       selectors: [
-        "div.grid-container.theme-rpl.grid.flex-nav-expanded",
-        "#notifications-inbox-button",
-        "div.pe-lg.flex.gap-xs.items-center.justify-start",
+        "#left-sidebar",
+        "#flex-left-nav-container",
+        "#left-sidebar-container",
+        "nav.h-header-large.flex.items-center",
       ],
     },
     {
       domain: "www.reddit.com",
       pattern: "^https?://www\\.reddit\\.com/\\?feed=home",
       selectors: [
-        "div.grid-container.theme-rpl.grid.flex-nav-expanded",
-        "#notifications-inbox-button",
-        "div.pe-lg.flex.gap-xs.items-center.justify-start",
+        "#left-sidebar",
+        "#flex-left-nav-container",
+        "#left-sidebar-container",
+        "nav.h-header-large.flex.items-center",
       ],
     },
     {
       domain: "www.reddit.com",
       pattern: "^https?://www\.reddit\.com/news/$",
       selectors: [
-        "div.grid-container.theme-rpl.grid.flex-nav-expanded",
-        "#notifications-inbox-button",
-        "div.pe-lg.flex.gap-xs.items-center.justify-start",
+        "#left-sidebar",
+        "#flex-left-nav-container",
+        "#left-sidebar-container",
+        "nav.h-header-large.flex.items-center",
+      ],
+    },
+    {
+      domain: "www.reddit.com",
+      pattern: "^https?://www\.reddit\.com/r/.*/comments/.*$",
+      selectors: [
+        "#left-sidebar",
+        "#flex-left-nav-container",
+        "#left-sidebar-container",
+        "nav.h-header-large.flex.items-center",
       ],
     },
   ];

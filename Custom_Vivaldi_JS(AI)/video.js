@@ -20,6 +20,11 @@
     "#secondary",
     "#button",
     "#icon",
+    "ytd-menu-renderer.style-scope.ytd-watch-metadata",
+    "yt-player-quick-action-buttons.ytPlayerQuickActionButtonsHost.ytPlayerQuickActionButtonsHostCompactControls.ytPlayerQuickActionButtonsHostDisableBackdropFilter",
+    "#subscribe-button > ytd-subscribe-button-renderer:nth-child(1) > yt-smartimation:nth-child(1) > div:nth-child(1) > yt-button-shape:nth-child(1)",
+    "#sponsor-button > timed-animation-button-renderer:nth-child(1) > yt-smartimation:nth-child(1) > div:nth-child(1) > ytd-button-renderer:nth-child(1) > yt-button-shape:nth-child(1)",
+    "div.ytp-overlay-inline-container",
   ];
 
   // Stored as a single const so insertCSS and removeCSS use identical text
