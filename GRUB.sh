@@ -50,7 +50,8 @@ echo "Restricting GRUB's submenus..."
 cd ~
 echo "fetching hooks..."
 /usr/bin/git clone https://github.com/MrSavageBanana/CTCT.git
+if [[ ! -d /etc/pacman.d/hooks ]]; then
+  sudo mkdir -p /etc/pacman.d/hooks
+fi
 /usr/bin/mv CTCT/grub1.hook CTCT/grub2.hook /etc/pacman.d/hooks
 /usr/bin/rm --dir ~/CTCT
-
-
