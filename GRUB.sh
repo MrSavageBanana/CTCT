@@ -35,18 +35,18 @@ echo "Storing GRUB password..."
 { 
   echo "set superusers=\"linuxconfig\""
   echo "password_pbkdf2 linuxconfig ${proper_format_grub_password}"
-} | sudo tee -a /etc/grub.d/40_custom > /dev/null
+} | /usr/bin/sudo tee -a /etc/grub.d/40_custom > /dev/null
  set +eu
 # Same as running sudo update-grub
 set -e
-sudo /usr/bin/grub-mkconfig -o /boot/grub/grub.cfg "$@"
+/usr/bin/sudo /usr/bin/grub-mkconfig -o /boot/grub/grub.cfg "$@"
 # Same as running the commands in the hooks
 echo "Unrestricting GRUB's linux boot entries..."
-/usr/bin/sed -i -e 's/--class os/--class os --unrestricted/g' /etc/grub.d/10_linux
+/usr/bin/sudo /usr/bin/sed -i -e 's/--class os/--class os --unrestricted/g' /etc/grub.d/10_linux
 echo "Restricting GRUB's submenus..."
-/usr/bin/sed -i "s/menuentry_id_option 'gnulinux-advanced/submenu_id_option 'gnulinux-advanced/g" /etc/grub.d/10_linux
+/usr/bin/sudo /usr/bin/sed -i "s/menuentry_id_option 'gnulinux-advanced/submenu_id_option 'gnulinux-advanced/g" /etc/grub.d/10_linux
 # setting up hooks to make this persistent
-/usr/bin/sudo pacman -S --needed git
+/usr/bin/sudo /usr/bin/pacman -S --needed git
 cd ~
 echo "fetching hooks..."
 /usr/bin/git clone https://github.com/MrSavageBanana/CTCT.git
