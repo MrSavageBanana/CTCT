@@ -28,6 +28,7 @@ echo "Storing GRUB password..."
 { 
   echo "KEEP THE FOLLOWING PASSWORD SAFE. You will need the following password to enter into GRUB: "
   echo ${manual_password}
+  # echo ${rand32charstr}
   echo "Last updated ${current_date}"
 } >> GRUB_PASSWORD-KEEP_SAFE.txt 
 
@@ -38,7 +39,7 @@ echo "Storing GRUB password..."
  set +eu
 # Same as running sudo update-grub
 set -e
-/usr/bin/grub-mkconfig -o /boot/grub/grub.cfg "$@"
+sudo /usr/bin/grub-mkconfig -o /boot/grub/grub.cfg "$@"
 # Same as running the commands in the hooks
 echo "Unrestricting GRUB's linux boot entries..."
 /usr/bin/sed -i -e 's/--class os/--class os --unrestricted/g' /etc/grub.d/10_linux
@@ -51,3 +52,5 @@ echo "fetching hooks..."
 /usr/bin/git clone https://github.com/MrSavageBanana/CTCT.git
 /usr/bin/mv CTCT/grub1.hook CTCT/grub2.hook /etc/pacman.d/hooks
 /usr/bin/rm --dir ~/CTCT
+
+
