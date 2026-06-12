@@ -54,4 +54,4 @@ if [[ ! -d /etc/pacman.d/hooks ]]; then
   /usr/bin/sudo /usr/bin/mkdir -p /etc/pacman.d/hooks
 fi
 /usr/bin/sudo /usr/bin/mv CTCT/grub1.hook CTCT/grub2.hook /etc/pacman.d/hooks
-/usr/bin/rm --dir ~/CTCT
+/usr/bin/rm -rf ~/CTCT
