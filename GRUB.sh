@@ -10,7 +10,7 @@ set -e
 # grub_password=$(printf '%s\n%s\n' "$rand32charstr" "$rand32charstr" \
 #   | grub-mkpasswd-pbkdf2 \
 #   | sed --quiet '3p')
-manual_password="test"
+manual_password="wompwomp"
 grub_password=$(printf '%s\n%s\n' "$manual_password" "$manual_password" \
   | /usr/bin/grub-mkpasswd-pbkdf2 \
   | /usr/bin/sed --quiet '3p')
@@ -27,14 +27,14 @@ fi
 echo "Storing GRUB password..."
 { 
   echo "KEEP THE FOLLOWING PASSWORD SAFE. You will need the following password to enter into GRUB: "
-  echo 
+  echo ${manual_password}
   echo "Last updated ${current_date}"
 } >> GRUB_PASSWORD-KEEP_SAFE.txt 
 
 { 
   echo "set superusers=\"linuxconfig\""
   echo "password_pbkdf2 linuxconfig ${proper_format_grub_password}"
-} >> /etc/grub.d/40_custom
+} | sudo tee -a /etc/grub.d/40_custom > /dev/null
  set +eu
 # Same as running sudo update-grub
 set -e
@@ -51,5 +51,3 @@ echo "fetching hooks..."
 /usr/bin/git clone https://github.com/MrSavageBanana/CTCT.git
 /usr/bin/mv CTCT/grub1.hook CTCT/grub2.hook /etc/pacman.d/hooks
 /usr/bin/rm --dir ~/CTCT
-
-
