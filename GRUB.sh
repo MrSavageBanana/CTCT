@@ -12,24 +12,37 @@
 #
 #   | sed --quiet '3p')
 
-exec 9>/var/lock/myscript.lock
+exec 9>/tmp/myscript.lock
 flock -n 9 || { echo "Already running" >&2; exit 1; }
 
 if [ "$EUID" -eq 0 ]
   then echo "Don't run as root. You will be prompted for sudo privileges."
   exit
 fi
-sudo -v
+sudo -vk || exit
 
 check_dependencies() {
     local deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" )
     for dep in "${deps[@]}"; do
         if ! command -v "$dep" >/dev/null 2>&1; then
-            echo >&2 "Error: Required command '$dep' is not installed."
-            exit 1
+		missing_dependencies+=("$dep")
         fi
     done
+    if [[ "${#missing_dependencies[@]}" -eq 0 ]] ; then
+	    echo "No Dependencies Missing"
+    elif [[ "${#missing_dependencies[@]}" -ne 0 ]]; then
+	    echo "${#missing_dependencies[@]}" 'missing dependencies!:'
+		    for missing_dependency in "${missing_dependencies[@]}"; do
+			    echo "$missing_dependency" 
+		    done
+		    exit
+	    else 
+		    echo "missing_dependencies array is not working. Array:"
+		    "${missing_dependencies[@]}"; exit
+    fi
+
 }
+check_dependencies
 
 export LC_ALL=C
 declare -a reverse_operation=()
