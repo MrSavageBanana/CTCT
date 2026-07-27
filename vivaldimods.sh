@@ -1,10 +1,38 @@
 #!/bin/bash
+read_desktop_files() {
+  grep -Rl "Categories=.*WebBrowser" /usr/share/applications \
+    ~/.local/share/applications 2>/dev/null | xargs awk -F'[= ]' \
+    '/^Exec=/{print $2}' /usr/share/applications/vivaldi-stable.desktop | uniq
+}
 
+load_browsers() {
+  mapfile -t browsers < <(read_desktop_files)
+  for b in "${browsers[@]}"; do
+    b2=$(command -v "$b")
+    b3=$(file --mime-type -b "$b3" | awk '{split($NF, a, "/"); print a[1]}')
+    if [[ $b3 = 'text' ]]; then
+      b4=$(strace -e trace=execve "$b2" --version |& awk -F "\"" '/^execve/ && /0$/ {print $4}' | tail -n 1)
+      browsers+=("$b4")
+    fi
+  done
+  for bro in "${browsers[@]}"; do
+    if ! grep "$bro" /etc/browsers.txt &> /dev/null; then
+      echo "$bro" | sudo tee --append /etc/browsers.txt > /dev/null
+      missing_browser_entries+=("$bro")
+    fi
+  done
+  if [ "${#missing_browser_entries[@]}" -eq 0 ]; then
+	  echo "Nothing missing. /etc/browsers.txt is up to date."
+  fi
+}
+load_browsers
 # --- VARIABLES ---
 FILE="/opt/vivaldi/resources/vivaldi/window.html"
 ANCHOR="<body>"
-
-INSERTS=('video.js' 'shorts.js' 'youtube.js' 'reddit_hp.js' 'reddit.js' 'startpage-wallpaper.js' 'bridge.js' 'autosave.js' 'loading.js' 'custom.js' 'dialogTab.js' 'tree.js' 'monochrome-icons.js' 'todoistDialog.js' 'youtubeNU.js' 'autocomplete-domain.js' 'toast.js' 'yandex.js' 'HibernatePanels.js' 'Markdown.js' 'Media.js')
+# removed youtube.js
+# HistPass.js
+#INSERTS=('startpage-wallpaper.js' 'bridge.js' 'autosave.js' 'loading.js' 'custom.js' 'dialogTab.js' 'tree.js' 'monochrome-icons.js' 'todoistDialog.js''autocomplete-domain.js' 'toast.js' 'yandex.js' 'HibernatePanels.js' 'Markdown.js' 'Media.js')
+INSERTS=('video.js' 'shorts.js' 'reddit_hp.js' 'reddit.js' 'youtubeNU.js' 'youtubesearch.js' 'youtubeautoplay.js' 'ytblur.js' 'YTChannel.js' 'ythover.js')
 INSERT_END=("${INSERTS[@]/%/\"></script>}")
 INSERT_BEGIN=("${INSERT_END[@]/#/<script src=\"}")
 # DEBUG MESSAGES

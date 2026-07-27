@@ -19,7 +19,7 @@ if [ "$EUID" -eq 0 ]
   then echo "Don't run as root. You will be prompted for sudo privileges."
   exit
 fi
-sudo -vk || exit
+sudo -vk
 
 check_dependencies() {
     local deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" )
@@ -145,6 +145,13 @@ undo_create_hooks_dir() {
 undo_move_hooks() {
     sudo mv /etc/pacman.d/hooks/grub1.hook "$HOME"
     sudo mv /etc/pacman.d/hooks/grub2.hook "$HOME"
+}
+binary_to_remove(){
+	sed "/shayan ALL=(root) NOPASSWD: /usr/bin/$1/d" /etc/90-allowed-commands
+}
+binaries_to_block=( "curl" "jq" "adb" "bat" "blkid" "cat " "chmod" "docker-compose " "du" "flatpak" "fuser" "grep" "journalctl " "killall" "ln" "make" "micro mv" "nano " "nbfc" "nvim" "pacman " "pkill" "rm" "rmpc" "sed" "sensors-detect " "sleep" "ss" "systemctl" "tailscale" "tlp " "tlp-stat" "touch" "ufw " "yay" "systemctl status" "systemctl start" "systemctl restart" "systemctl enable" "systemctl is-active" "systemctl list-units" "systemctl list-unit-files" "systemctl show" "systemctl status *" "systemctl start *" "systemctl restart *" "systemctl enable *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" )
+undo_create_root(){
+	echo "It is not safe for this script to undo the root password creation automatically. Check file for the root password to manually change."
 }
 
 set -eu
@@ -305,3 +312,23 @@ if sudo mv "$HOME/grub1.hook" "$HOME/grub2.hook" /etc/pacman.d/hooks; then
 else
 	perform_rollback
 fi
+ # end of grub setup
+exit_cleanly(){
+	echo $?; exit
+}
+for binaries in "${binaries_to_block[@]}"; do
+	if ! grep -qF "shayan ALL=(root) NOPASSWD: /usr/bin/$binaries" /etc/90-allowed-commands; then
+		echo "shayan ALL=(root) NOPASSWD: /usr/bin/$binaries" | sudo tee --append /etc/90-allowed-commands || exit_cleanly
+		reverse_operation+=("binary_to_remove $binaries")
+	else
+		perform_rollback
+	fi
+done
+
+
+if echo "root:$manual_password" | sudo chpasswd; then
+	reverse+=("undo_create_root") 
+else
+	perform_rollback
+fi
+

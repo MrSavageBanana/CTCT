@@ -4,10 +4,10 @@
 # while true; do
 # PID=$(pgrep --list-full vivaldi-bin | grep -v "type" | awk '{print $1}')
 # cmdline=$(pgrep --list-full vivaldi-bin | grep -v "type" | awk '{$1=""; print $0}' | grep --only-matching -- "--remote-debugging-port=9222")
-# 
+#
 # if [[ "$cmdline" != "--remote-debugging-port=9222" && "$PID" =~ ^[0-9]+$ ]]; then # If $cmdline ≠ "--remote-debugging-port=9222" and $PID is a number then kill the PID
 #     kill "$PID"
-# elif [[ "$cmdline" == "--remote-debugging-port=9222" ]]; then 
+# elif [[ "$cmdline" == "--remote-debugging-port=9222" ]]; then
 # 	echo ""
 # else
 # 	echo ""
@@ -16,67 +16,96 @@
 
 # This works for all browsers which display their browser status in a .desktop file
 # The working script as a function we can call
-close_tab() {
-	TMPFILE=$(mktemp)
-	trap "rm -f $TMPFILE" EXIT
+# created with Claude. Account: Burhan Ra'if Kouri
+closetabs2() {
+  blocked_domains=()
+  while IFS= read -r d; do
+    blocked_domains+=("$d")
+  done < <(awk '!/#/ && /0.0.0.0/ { count++; if (count >= 2) print $2 }' /etc/hosts)
 
-	cat /etc/hosts | sed '/#/d' | awk '/0.0.0.0/ { count++ } count >= 2' | awk '{print $2}' | sed '/^$/d' > "$TMPFILE"
+  domains=()
+  ids=()
+  while IFS=$'\t' read -r domain id; do
+    domains+=("$domain")
+    ids+=("$id")
+  done < <(curl -s http://localhost:9222/json/list | awk -F'"' '
+    /"id":/ { id = $4 }
+    /"url": "https:\/\// { split($4, a, "/"); print a[3] "\t" id }
+    ')
 
-		curl -s http://localhost:9222/json/list | jq -r '.[] | select(.type=="page") | .url + " " + .id' | while read -r url id; do
-		if grep -qFf "$TMPFILE" <<< "$url"; then
-			curl -s "http://localhost:9222/json/close/$id" >/dev/null
-		fi
-	done
+  for i in "${!domains[@]}"; do
+    for blockdom in "${blocked_domains[@]}"; do
+      if [[ "${domains[$i]}" == "$blockdom" ]]; then
+        curl -s "http://localhost:9222/json/close/${ids[$i]}" >/dev/null
+        break
+      fi
+    done
+  done
 }
 
 check_browser() {
-    local browser="$1"
-    local PID
-    local cmdline
+  local browser="$1"
+  local cmdline
 
-    PID=$(pgrep --list-full "$browser" | grep -v "type" | awk '{print $1}')
-
-    # Browser isn't running, nothing to do
-    if [[ ! "$PID" =~ ^[0-9]+$ ]]; then
-        return
+  # Turn this into an array then talk to unscripted about problems
+  mapfile -t PIDS < <(pgrep -f "$browser")
+  # Browser isn't running, nothing to do
+  for pid in "${PIDS[@]}"; do
+    if [[ ! "$pid" =~ ^[0-9]+$ ]]; then
+      return
     fi
+  done
 
-    # Any browser that isn't vivaldi gets killed immediately
-    if [[ "$browser" != *"vivaldi"* ]]; then
-        kill "$PID"
-        return
-    fi
+  # Any browser that isn't vivaldi gets killed immediately
+  if [[ "$browser" != *"vivaldi"* ]]; then
 
-    # Vivaldi must have the flag or it gets killed
-    cmdline=$(pgrep --list-full "$browser" | grep -v "type" | awk '{$1=""; print $0}' | grep --only-matching -- "--remote-debugging-port=9222")
-    if [[ "$cmdline" != "--remote-debugging-port=9222" ]]; then
-        kill "$PID"
-    elif [[ "$cmdline" == "--remote-debugging-port=9222" ]]; then
-        close_tab
-    fi
+    for pid2 in "${PIDS[@]}"; do
+      kill "$pid2"
+      return
+    done
+  fi
+
+  # Vivaldi must have the flag or it gets killed
+  cmdline=$(pgrep -fa "$browser" | grep -v "type" | awk '{$1=""; print $0}' | grep --only-matching -- "--remote-debugging-port=9222")
+  if [[ "$cmdline" != "--remote-debugging-port=9222" ]]; then
+    for pid3 in "${PIDS[@]}"; do
+      kill "$pid3"
+    done
+  elif [[ "$cmdline" == "--remote-debugging-port=9222" ]]; then
+    closetabs2
+  fi
+}
+
+read_desktop_files() {
+  grep -Rl "Categories=.*WebBrowser" /usr/share/applications \
+    ~/.local/share/applications 2>/dev/null | xargs awk -F'[= ]' \
+    '/^Exec=/{print $2}' /usr/share/applications/vivaldi-stable.desktop | uniq
 }
 
 load_browsers() {
-    touch browsers.txt # It will create it if it doesn't exist. won't rewrite the file if it exists
-    grep -Rl "Categories=.*WebBrowser" /usr/share/applications ~/.local/share/applications 2>/dev/null \
-        | xargs awk -F= '/^Exec=/{print $2}' \
-        | awk '{print $1}' \
-        | awk -F/ '{print $NF}' \
-        | sort -u \
-        | grep -Fxvf browsers.txt >> browsers.txt
-
-    browsers=()
-    if [[ -f "browsers.txt" && -s "browsers.txt" ]]; then
-        mapfile -t browsers < <(grep -v '^\s*$' browsers.txt)
+  mapfile -t browsers < <(read_desktop_files)
+  for b in "${browsers[@]}"; do
+    b2=$(command -v "$b")
+    b3=$(file --mime-type -b "$b2" | awk '{split($NF, a, "/"); print a[1]}')
+    if [[ $b3 = 'text' ]]; then
+      # b4=$(strace -e trace=execve "$b2" --version |& awk -F "\"" '/^execve/ && /0$/ {print $2}' | awk -F "/" '{print $NF}' | tail -n 1)
+      b4=$(strace -e trace=execve "/usr/bin/google-chrome-stable" --version |& awk -F'"' '/^execve/ && /0$/ { n = split($2, arr, "/"); result = arr[n] } END { if (result) print result }')
+      browsers+=("$b4")
     fi
-    if [[ ${#browsers[@]} -eq 0 ]]; then
-        browsers=("vivaldi-bin")
+  done
+  for bro in "${browsers[@]}"; do
+    if ! grep "$bro" /etc/browsers.txt; then
+      echo "$bro" | sudo tee -append /etc/browsers.txt
     fi
+  done
 }
 
 while true; do
+  if [[ ! -e /etc/browsers.txt ]]; then
     load_browsers
-    for browser in "${browsers[@]}"; do
-        check_browser "$browser"
-    done
+  fi
+  # need to add a sleep for some arbitrary time
+  for browser in "${browsers[@]}"; do
+    check_browser "$browser"
+  done
 done
