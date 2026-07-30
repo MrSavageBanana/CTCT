@@ -21,8 +21,14 @@ if [ "$EUID" -eq 0 ]; then
   exit
 fi
 sudo -vk
+declare -a missing_dependencies=()
+declare -a overwritten_files=()
+declare -a applied_vivaldi_mods=()
+declare -a potentially_overwritten_files=()
+declare -a binaries_to_allow=()
+declare -a important_files=()
 check_dependencies() {
-  local deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" "awk")
+  local deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" "awk" "dialog")
   for dep in "${deps[@]}"; do
     if ! command -v "$dep" >/dev/null 2>&1; then
       missing_dependencies+=("$dep")
@@ -44,25 +50,26 @@ check_dependencies() {
 
 }
 check_dependencies
-potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/matt_damon.sh" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "/opt/vivaldi/resources/vivaldi/reddit.js" "/opt/vivaldi/resources/vivaldi/reddit_hp.js" "/opt/vivaldi/resources/vivaldi/shorts.js" "/opt/vivaldi/resources/vivaldi/video.js" "/opt/vivaldi/resources/vivaldi/youtube.js" "/opt/vivaldi/resources/vivaldi/youtubeNU.js" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt")
+# we are unable to warn the users about the JS files that may be overwritten unless we ping the github repo (which we will already do when we clone) to check what files might be overwritten
+potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/matt_damon.sh" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt")
 for file in "${potentially_overwritten_files[@]}"; do
   if [[ -e "$file" ]]; then
     overwritten_files+=("$file")
   fi
-  if [[ "${#overwritten_files[@]}" -eq 0 ]]; then
-    echo "No files will be overwritten"
-  elif [[ "${#overwritten_files[@]}" -ne 0 ]]; then
-    echo "${#overwritten_files[@]}" 'overwritten_files!:'
-    for overwritten_file in "${overwritten_files[@]}"; do
-      echo "$overwritten_file"
-    done
-    exit
-  else
-    echo "overwritten_files array is not working. Array:"
-    "${overwritten_files[@]}"
-    exit
-  fi
 done
+if [[ "${#overwritten_files[@]}" -eq 0 ]]; then
+  echo "No files will be overwritten"
+elif [[ "${#overwritten_files[@]}" -ne 0 ]]; then
+  echo "${#overwritten_files[@]}" 'overwritten_files!:'
+  for overwritten_file in "${overwritten_files[@]}"; do
+    echo "$overwritten_file"
+  done
+  exit
+else
+  echo "overwritten_files array is not working. Array:"
+  "${overwritten_files[@]}"
+  exit
+fi
 
 if [[ -d $HOME/CTCT ]]; then
   echo "$HOME/CTCT directory already exists"
@@ -80,7 +87,7 @@ perform_rollback() {
   total_items=${#reverse_operation[@]}
 
   # Loop backwards through the array
-  for ((i = $total_items - 1; i >= 0; i--)); do
+  for ((i = total_items - 1; i >= 0; i--)); do
     current_undo_command="${reverse_operation[$i]}"
     echo "Undoing: $current_undo_command"
 
@@ -96,30 +103,30 @@ trap "" SIGINT SIGTSTP SIGQUIT # can't risk the user exiting the script and mess
 # Checks Ends
 # Rollback Functions Start
 undo_closetabs_creation() { mv /etc/systemd/system/closetabs.service "$HOME/CTCT"; }
-undo_closetabs_service_enable() { systemctl disable closetabs; }
+undo_closetabs_service_enable() { systemctl disable --now closetabs; }
 undo_move_matt_daemon() { mv /etc/matt_damon "$HOME/CTCT"; }
 undo_create_hooks_bin_dir() { mv /etc/pacman.d/hooks.bin /; }
-undo_move_vivaldi.sh() { mv /etc/pacman.d/hooks.bin/vivaldimods.sh "$HOME/CTCT"; }
+undo_move_vivaldi_sh() { mv /etc/pacman.d/hooks.bin/vivaldimods.sh "$HOME/CTCT"; }
 undo_create_hooks_dir() { mv /etc/pacman.d/hooks "$HOME/.local/share/Trash/files"; }
-undo_vivaldiupdate_hook() { mv /etc/pacman.d/hook/vivaldiupdate.hook "$HOME/CTCT"; }
-undo_grub1_hook() { mv /etc/pacman.d/hook/grub1.hook "$HOME/CTCT"; }
-undo_grub2_hook() { mv /etc/pacman.d/hook/grub2.hook "$HOME/CTCT"; }
+undo_vivaldiupdate_hook() { mv /etc/pacman.d/hooks/vivaldiupdate.hook "$HOME/CTCT"; }
+undo_grub1_hook() { mv /etc/pacman.d/hooks/grub1.hook "$HOME/CTCT"; }
+undo_grub2_hook() { mv /etc/pacman.d/hooks/grub2.hook "$HOME/CTCT"; }
 undo_vivaldi_JS_SCRIPTS() {
   cd /opt/vivaldi/resources/vivaldi/
   mv "${applied_vivaldi_mods[@]}" "$HOME/CTCT/Custom_Vivaldi_JS(AI)"
   cd -
 }
-undo_vivaldimods.sh() {
-  for JS in "${INSERTS[@]}"; do
-    sed "/$JS/d" /etc/pacman
+undo_vivaldimods_sh() {
+  for JS in "${applied_vivaldi_mods[@]}"; do
+    sudo sed "/$JS/d" /opt/vivaldi/resources/vivaldi/window.html
   done
   for sites in "${new_host_entries[@]}"; do # this can only work if we decide to run the function because the array which has all the newly added websites won't exist
-    sed "/$sites/d" /etc/hosts
+    sudo sed "/$sites/d" /etc/hosts
   done
 }
 remove_corrected_vivaldi_entry() { mv "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/CTCT"; }
-reverse_immute() { chattr -i "$1"; }
-binary_to_remove() { sed "/$user ALL=(root) NOPASSWD: /usr/bin/$1/d" /etc/90-allowed-commands; } # this could fail if the username somehow had a regex special character
+reverse_immute() { sudo chattr -i "$1"; }
+binary_to_remove() { sed "/$user ALL=(root) NOPASSWD: /usr/bin/$1/d" /etc/sudoers.d/90-allowed-commands; } # this could fail if the username somehow had a regex special character
 undo_create_trash_dir() { rm -rf "$HOME/.local/share/Trash/files"; }
 undo_move_password_file() { mv "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME"; }
 undo_backup_grub_custom() { sudo mv --force /etc/grub.d/40_custom.bak /etc/grub.d/40_custom; }
@@ -133,25 +140,58 @@ undo_restrict_grub() { sudo sed -i "s/submenu_id_option 'gnulinux-advanced/menue
 # undo_create_grub2() { rm grub2.hook; }
 undo_create_etc_dir() { mv /etc "$HOME/.local/share/Trash/files/"; } # this only removes etc if you didn't have it before
 undo_create_pacman_d_dir() { mv /etc/pacman.d "$HOME/.local/share/Trash/files/"; }
-undo_create_hooks_dir() { mv /etc/pacman.d/hooks "$HOME/.local/share/Trash/files/"; }
 #undo_move_hooks() {
 #    sudo mv /etc/pacman.d/hooks/grub1.hook "$HOME"
 #    sudo mv /etc/pacman.d/hooks/grub2.hook "$HOME"
 #}
-binary_to_remove() { sed "/$user ALL=(root) NOPASSWD: /usr/bin/$1/d" /etc/90-allowed-commands; }
-binaries_to_allow=("curl" "jq" "adb" "bat" "blkid" "cat " "chmod" "docker-compose " "du" "flatpak" "fuser" "grep" "journalctl " "killall" "ln" "make" "micro mv" "nano " "nbfc" "nvim" "pacman " "pkill" "rm" "rmpc" "sed" "sensors-detect " "sleep" "ss" "tailscale" "tlp " "tlp-stat" "touch" "ufw " "yay" "systemctl status" "systemctl start" "systemctl restart" "systemctl enable" "systemctl is-active" "systemctl list-units" "systemctl list-unit-files" "systemctl show" "systemctl status *" "systemctl start *" "systemctl restart *" "systemctl enable *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *")
+#binaries_to_allow=("curl" "jq" "adb" "bat" "blkid" "cat " "chmod" "docker-compose " "du" "flatpak" "fuser" "grep" "journalctl " "killall" "ln" "make" "micro" "mv" "nano " "nbfc" "pacman " "pkill" "rm" "rmpc" "sed" "sensors-detect " "sleep" "ss" "tailscale" "tlp " "tlp-stat" "touch" "ufw " "yay" "systemctl status" "systemctl start" "systemctl restart" "systemctl enable" "systemctl is-active" "systemctl list-units" "systemctl list-unit-files" "systemctl show" "systemctl status *" "systemctl start *" "systemctl restart *" "systemctl enable *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *")
+# why the following weren't included
+# make: Can create a simple makefile such as the following to run any command
+# ```make
+# hello:
+# sudo echo "Hello, World"
+# ```
+# micro/nvim/: when a user opens a terminal in micro launched with sudo, they get access to a root terminal
+# nano: a user can run ^R and then ^X to launch any command
+# sed: a user can run the following command (the file can be any file. not just 10_linux )
+# ```bash
+# sudo sed -e '1e chattr -i /etc/grub.d/10_linux' /etc/hostname
+# ```
+# yay: user can create their own dummy package with commands such as `sudo chattr -i ` and submit to AUR and can run those commands
+# pacman: user can download their own script using pacman -U to install a local package, also allowing a way to run commands
+# systemctl start/restart/enable: user can create their own service, with their own Exec line to run any command using systemctl enable and start the service using systemctl start. systemctl restart does the same thing to a newly created service as systemctl enable and systemctl start so we have to stop it for the same reason. We can also block the `mv` command  instead stopping the user from ever creating their own services but the mv command is used more than the systemctl commands
+binaries_to_allow=("curl" "jq" "adb" "bat" "blkid" "cat" "chmod" "docker-compose" "du" "flatpak" "fuser" "grep" "journalctl" "killall" "ln" "mv" "nbfc" "pkill" "rm" "rmpc" "sensors-detect" "sleep" "ss" "tailscale" "tlp" "tlp-stat" "touch" "ufw" "systemctl status" "systemctl is-active" "systemctl list-units" "systemctl list-unit-files" "systemctl show" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *")
 undo_create_root() { echo "It is not safe for this script to undo the root password creation automatically. Check file for the root password to manually change."; }
+undo_create_local_bin_dir() { echo "This folder needs to be here. Not going to undo it"; }
+undo_include_sudoers_d_dir() { mv /etc/sudoers.d/ "$HOME/.local/share/Trash/files/"; }
 # Rollback Functions End
 # References Begin
 user=$(whoami)
 apply_vivaldi_mods() {
   cd "$HOME/CTCT"
-  bash /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee vivaldimods_output.txt
+  sudo bash /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee vivaldimods_output.txt
   sed -i -e "/mods are already indented/d" -e "/Nothing missing/d" -e "/Inserted <script src/d" -e "/Adding missing entries:/d" -e "/Done./d" vivaldimods_output.txt
   sudo awk '{print $2}' vivaldimods_output.txt | sudo tee tmpfile.txt >/dev/null && sudo mv -f tmpfile.txt vivaldimods_output.txt
   readarray <vivaldimods_output.txt new_host_entries
   mv vivaldimods_output.txt "$HOME/.local/share/Trash/files/"
 }
+
+# since the vivaldimods.sh was just run, the user likely has an internet connection at this point and it is safer to install go and tle right now
+if [[ ! -e /usr/local/go ]]; then
+  echo "Downloading go zip"
+  curl -s https://dl.google.com/go/go1.26.5.linux-amd64.tar.gz --output go.tar.gz
+  sudo tar -C /usr/local/ -xzf go.tar.gz
+fi
+if [[ -e /usr/local/go ]]; then
+  /usr/local/go/bin/go install github.com/drand/tlock/cmd/tle@latest
+else
+  echo "go wasn't installed"
+  exit
+fi
+if ! up_to_date_info=$(curl -sf https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/info); then
+  drand_failed=true
+fi
+
 correct_flag_helper() { # 189
   if [[ -e "$HOME/.local/share/applications/vivaldi-stable.desktop" ]]; then
     mv "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/"
@@ -159,7 +199,7 @@ correct_flag_helper() { # 189
   fi
   if [[ ! -d $HOME/.local/bin/ ]]; then
     if mkdir -p "$HOME/.local/bin/"; then
-      reverse_operation+=("undo_create_local_bin_dir") # need to create this function
+      reverse_operation+=("undo_create_local_bin_dir")
     else
       perform_rollback
     fi
@@ -170,11 +210,13 @@ exit_cleanly() {
   echo $?
   exit
 }
-important_files=('/etc/hosts' '/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pacman.d/hooks/grub1.hook' '/etc/pacman.d/hooks/grub2.hook' '/etc/pacman.d/hooks.bin/vivaldimods.sh' '/etc/systemd/system/closetabs.service' '/etc/matt_damon.sh' '/etc/sudoers' '/etc/sudoers.d' "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt")
+important_files=('/etc/hosts' '/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pacman.d/hooks/grub1.hook' '/etc/pacman.d/hooks/grub2.hook' '/etc/pacman.d/hooks.bin/vivaldimods.sh' '/etc/systemd/system/closetabs.service' '/etc/matt_damon.sh' '/etc/sudoers' '/etc/sudoers.d' "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock")
 backup_timestamp=$(date '+%Y-%m-%dT%H-%M-%S')
 readonly backup_timestamp
-readonly manual_password="wompwomp"
-grub_password=$(printf '%s\n%s\n' "$manual_password" "$manual_password" |
+readonly manual_password="wompwomp"                                                      # manual_password is for debugging/developing only
+readonly rand32charstr=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1) # change it from 32 to another amount of characters if you want to easily be able to jailbreak it
+readonly chosen_password="$manual_password"
+grub_password=$(printf '%s\n%s\n' "$chosen_password" "$chosen_password" |
   grub-mkpasswd-pbkdf2 |
   sed --quiet '3p')
 readonly grub_password
@@ -201,7 +243,7 @@ git clone https://github.com/MrSavageBanana/CTCT.git || exit
 cd CTCT || exit
 
 # Service
-if cp closetabs.service /etc/systemd/system; then
+if cp -f closetabs.service /etc/systemd/system; then
   reverse_operation+=("undo_closetabs_creation")
 else
   perform_rollback
@@ -225,17 +267,9 @@ if [[ ! -d /etc/pacman.d/hooks.bin ]]; then
   fi
 fi
 if mv --force vivaldimods.sh /etc/pacman.d/hooks.bin; then
-  reverse_operation+=("undo_move_vivaldi.sh")
+  reverse_operation+=("undo_move_vivaldi_sh")
 else
   perform_rollback
-fi
-
-if [[ ! -d /etc/pacman.d/hooks ]]; then
-  if mkdir -p /etc/pacman.d/hooks; then
-    reverse_operation+=("undo_create_hooks_dir")
-  else
-    perform_rollback
-  fi
 fi
 
 if mv --force vivaldiupdate.hook /etc/pacman.d/hooks; then
@@ -265,7 +299,7 @@ cd "Custom_Vivaldi_JS(AI)" || exit
 # 2. if the user has their own custom, they should be required to put the path to the directory
 # 3. if they don't have their directory yet, they can run the script with the arguments to the directory to add it in.
 #if sudo mv --force "${JS_SCRIPTS[@]}" /opt/vivaldi/resources/vivaldi; then
-for f in "$HOME/CTCT/Custom_Vivaldi_JS\(AI\)/"*.js; do
+for f in *js; do
   if sudo mv --force "$f" /opt/vivaldi/resources/vivaldi; then
     reverse_operation+=("undo_vivaldi_JS_SCRIPTS")
     applied_vivaldi_mods+=("$f")
@@ -273,12 +307,11 @@ for f in "$HOME/CTCT/Custom_Vivaldi_JS\(AI\)/"*.js; do
     perform_rollback
   fi
 done
+cd "$HOME/CTCT"
 
 echo "Applying JS and hosts"
-if sudo bash /etc/pacman.d/hooks.bin/vivaldimods.sh; then
-  # if source etc/pacman.d/hooks.bin/vivaldimods.sh; then # contemplating replacing the above if statement with this one or the one below
-  # if apply_vivaldi_mods; then
-  reverse_operation+=("undo_vivaldimods.sh")
+if apply_vivaldi_mods; then
+  reverse_operation+=("undo_vivaldimods_sh")
 else
   perform_rollback
 fi
@@ -296,10 +329,10 @@ fi
 # I will likely allow the users to change what is given the sudo privileges but the script will check for what is absolutely not allowed to be given sudo privileges for this stuff to work. This is maybe a feature for another time.
 
 for binaries in "${binaries_to_allow[@]}"; do
-  if ! grep -qF "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" /etc/90-allowed-commands; then
-    echo "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" | sudo tee --append /etc/90-allowed-commands || exit_cleanly
+  if ! grep -qF "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" /etc/sudoers.d/90-allowed-commands; then
+    echo "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" | sudo tee --append /etc/sudoers.d/90-allowed-commands || exit_cleanly
     reverse_operation+=("binary_to_remove $binaries")
-  elif grep -qF "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" /etc/90-allowed-commands; then
+  elif grep -qF "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" /etc/sudoers.d/90-allowed-commands; then
     echo "$binaries" already exists
   else
     perform_rollback
@@ -308,7 +341,7 @@ done
 
 if ! grep -qF "@includedir /etc/sudoers.d" /etc/sudoers; then
   echo "@includedir /etc/sudoers.d" | sudo tee --append /etc/sudoers || exit_cleanly
-  reverse_operation+=("undo_include_sudoers.d_dir") # need to create this
+  reverse_operation+=("undo_include_sudoers_d_dir")
 elif grep -qF "@includedir /etc/sudoers.d" /etc/sudoers; then
   echo "includedir line exists"
 else
@@ -359,15 +392,57 @@ echo "Storing GRUB password..."
 
 if {
   echo "KEEP THE FOLLOWING PASSWORD SAFE. You will need the following password to enter into GRUB: "
-  echo "${manual_password}" # this will need to be removed when the script runs to not let the user know the root and grub password
-  # echo "${rand32charstr}"
+  echo "${chosen_password}"
   echo "Last updated ${current_date}"
-} >>GRUB_PASSWORD-KEEP_SAFE.txt; then
+} >>GRUB_PASSWORD-KEEP_SAFE.txt; then # for a period of time until this file is shred, someone could theoretically see what is inside it. NOt sure how to stop this.
   reverse_operation+=("undo_create_password_file")
 else
   perform_rollback
 fi
 
+echo "select a date to stop focussing"
+echo "Click enter to continue"
+secs=10
+while [ "$secs" -ge 0 ]; do
+  echo -ne "Continuing in $secs seconds...\033[0K\r"
+
+  if read -t 1 -r _; then
+    break
+  fi
+
+  ((secs--))
+done
+
+read -t 10 -r _ || true
+selected_end_date=$(dialog --clear --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
+echo "select a time to end the script"
+selected_end_time=$(dialog --clear --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
+ending="$selected_end_date $selected_end_time"
+ending_epoch=$(date -d "$ending" +%s)
+if [[ $drand_failed == "true" ]]; then
+  # these are the likely defaults.
+  genesis="1692803367"
+  period="3"
+  hash="52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
+elif [[ $drand_failed != "true" ]]; then
+  genesis=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $14}')
+  period=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $10}')
+  hash=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $19}')
+fi
+round=$((((ending_epoch - genesis) / period) + 1))
+
+if [[ -e "$HOME/go/bin/tle" ]]; then
+  "$HOME/go/bin/tle" -e -c "$hash" -r "$round" -o "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt"
+  if [[ ! -s "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" ]]; then
+    echo round "$round" is in the past
+  else
+    echo "COMPLETE"
+    shred "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt" # shred will overwrite the file and ensure that any file recovery fails. A person could run SystemRescue and recover the file easily if the file wasn't overwritten
+  fi
+else
+  echo "tle wasn't installed"
+  exit
+fi
 set -eEuo pipefail
 echo "sudo is needed for appending to /etc/grub.d/40_custom"
 # This deletes both the password_pbkdf2 and the superusers line at once
@@ -436,27 +511,10 @@ if [[ ! -d /etc/pacman.d/hooks ]]; then
 fi
 
 # end of grub setup
-for binaries in "${binaries_to_allow[@]}"; do
-  if ! grep -qF "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" /etc/90-allowed-commands; then
-    echo "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" | sudo tee --append /etc/90-allowed-commands || exit_cleanly
-    reverse_operation+=("binary_to_remove $binaries")
-  elif grep -qF "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" /etc/90-allowed-commands; then
-    echo "$binaries" already exists
-  else
-    perform_rollback
-  fi
-done
-
-if echo "root:$manual_password" | sudo chpasswd; then
-  reverse_operation+=("undo_create_root")
-else
-  perform_rollback
-fi
 
 # Immutable File; last step
-chown root:root GRUB_PASSWORD-KEEP_SAFE.txt
 for important_file in "${important_files[@]}"; do
-  if chattr +i "$important_file"; then
+  if sudo chattr +i "$important_file"; then
     reverse_operation+=("reverse_immute $important_file")
   else
     perform_rollback
@@ -464,11 +522,18 @@ for important_file in "${important_files[@]}"; do
 done
 
 for JS_SCRIPT in "${applied_vivaldi_mods[@]}"; do
-  if chattr +i /opt/vivaldi/resources/vivaldi/"$JS_SCRIPT"; then
-    reverse_operation+=("reverse_immute $JS_SCRIPT")
+  if sudo chattr +i /opt/vivaldi/resources/vivaldi/"$JS_SCRIPT"; then
+    reverse_operation+=("reverse_immute /opt/vivaldi/resources/vivaldi/$JS_SCRIPT")
   else
     perform_rollback
   fi
 done
+sudo chattr +a /etc/browsers.txt
 
+# last use of sudo so it has to go last
+if echo "root:$chosen_password" | sudo chpasswd; then
+  reverse_operation+=("undo_create_root")
+else
+  perform_rollback
+fi
 mv "$HOME/CTCT" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}"

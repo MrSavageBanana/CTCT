@@ -61,8 +61,8 @@ check_browser() {
 
     for pid2 in "${PIDS[@]}"; do
       kill "$pid2"
-      return
     done
+    return
   fi
 
   # Vivaldi must have the flag or it gets killed
@@ -78,7 +78,7 @@ check_browser() {
 
 read_desktop_files() {
   grep -Rl "Categories=.*WebBrowser" /usr/share/applications \
-    ~/.local/share/applications 2>/dev/null | xargs awk -F'[= ]' \
+    ~/.local/share/applications /var/lib/flatpak/app/*/current/active/files/share/applications 2>/dev/null | xargs awk -F'[= ]' \
     '/^Exec=/{print $2}' /usr/share/applications/vivaldi-stable.desktop | uniq
 }
 
@@ -88,23 +88,25 @@ load_browsers() {
     b2=$(command -v "$b")
     b3=$(file --mime-type -b "$b2" | awk '{split($NF, a, "/"); print a[1]}')
     if [[ $b3 = 'text' ]]; then
-      # b4=$(strace -e trace=execve "$b2" --version |& awk -F "\"" '/^execve/ && /0$/ {print $2}' | awk -F "/" '{print $NF}' | tail -n 1)
-      b4=$(strace -e trace=execve "/usr/bin/google-chrome-stable" --version |& awk -F'"' '/^execve/ && /0$/ { n = split($2, arr, "/"); result = arr[n] } END { if (result) print result }')
+      # b4=$(strace -e trace=execve "$b2" --version |& awk -F "\"" '/^execve/ && /0$/ {print $2}' | awk -F "/" '{print $NF}' | tail -n 1) # same as below but less pipes. Used AI to make the single awk command below
+      b4=$(strace -e trace=execve "$b2" --version |& awk -F'"' '/^execve/ && /0$/ { n = split($2, arr, "/"); result = arr[n] } END { if (result) print result }')
       browsers+=("$b4")
     fi
   done
   for bro in "${browsers[@]}"; do
-    if ! grep "$bro" /etc/browsers.txt; then
-      echo "$bro" | sudo tee -append /etc/browsers.txt
+    if ! grep "$bro" /etc/browsers.txt &>/dev/null; then
+      echo "$bro" | sudo tee --append /etc/browsers.txt >/dev/null
     fi
   done
 }
-
 while true; do
   if [[ ! -e /etc/browsers.txt ]]; then
     load_browsers
+  elif [[ -e /etc/browsers.txt ]]; then
+    if [[ "${#browsers[@]}" -eq 0 ]]; then
+      load_browsers
+    fi
   fi
-  # need to add a sleep for some arbitrary time
   for browser in "${browsers[@]}"; do
     check_browser "$browser"
   done

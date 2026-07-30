@@ -3,8 +3,8 @@ Description=Close tabs service
 StartLimitIntervalSec=0
 
 [Service]
-WorkingDirectory=/home/shayan/Downloads/Code/CTCT/Modules/
-ExecStart=/usr/bin/bash /home/shayan/Downloads/Code/CTCT/Modules/matt_damon.sh
+WorkingDirectory=/etc/
+ExecStart=/usr/bin/bash /etc/matt_damon.sh
 Restart=always 
 RestartSec=1
 User=root

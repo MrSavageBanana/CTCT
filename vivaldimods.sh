@@ -9,9 +9,9 @@ load_browsers() {
   mapfile -t browsers < <(read_desktop_files)
   for b in "${browsers[@]}"; do
     b2=$(command -v "$b")
-    b3=$(file --mime-type -b "$b3" | awk '{split($NF, a, "/"); print a[1]}')
+    b3=$(file --mime-type -b "$b2" | awk '{split($NF, a, "/"); print a[1]}')
     if [[ $b3 = 'text' ]]; then
-      b4=$(strace -e trace=execve "$b2" --version |& awk -F "\"" '/^execve/ && /0$/ {print $4}' | tail -n 1)
+      b4=$(strace -e trace=execve "$b2" --version |& awk -F'"' '/^execve/ && /0$/ { n = split($2, arr, "/"); result = arr[n] } END { if (result) print result }')
       browsers+=("$b4")
     fi
   done
@@ -26,12 +26,26 @@ load_browsers() {
   fi
 }
 load_browsers
+if [[ ! -e /etc/systemd/system/multi-user.target.wants/closetabs.service ]]; then
+	echo "Enabling closetabs.service"
+	systemctl enable --now closetabs	
+fi
 # --- VARIABLES ---
 FILE="/opt/vivaldi/resources/vivaldi/window.html"
 ANCHOR="<body>"
 # removed youtube.js
 # HistPass.js
 #INSERTS=('startpage-wallpaper.js' 'bridge.js' 'autosave.js' 'loading.js' 'custom.js' 'dialogTab.js' 'tree.js' 'monochrome-icons.js' 'todoistDialog.js''autocomplete-domain.js' 'toast.js' 'yandex.js' 'HibernatePanels.js' 'Markdown.js' 'Media.js')
+for file in "opt/vivaldi/resources/vivaldi"/*.js; do
+  [ -e "$file" ] || continue
+  fname=$(basename "$file")
+  case "$fname" in
+  *bundle* | *background-service-worker* | *devtools*) continue ;;
+  *) echo "$fname" >>/home/shayan/tmpfilevivaldimodssh.txt ;;
+  esac
+done
+readarray </home/shayan/tmpfilevivaldimodssh.txt INSERTS
+rm /home/shayan/tmpfilevivaldimodssh.txt
 INSERTS=('video.js' 'shorts.js' 'reddit_hp.js' 'reddit.js' 'youtubeNU.js' 'youtubesearch.js' 'youtubeautoplay.js' 'ytblur.js' 'YTChannel.js' 'ythover.js')
 INSERT_END=("${INSERTS[@]/%/\"></script>}")
 INSERT_BEGIN=("${INSERT_END[@]/#/<script src=\"}")
@@ -50,7 +64,7 @@ done
  
 echo "${#DUPLICATE_MODS[@]}" 'mods are already indented.'
 # Check that /etc/hosts isn't missing anything from the mirror, and add what's missing
-mirror=$(curl -s https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/gambling-porn-only/hosts \
+mirror=$(curl -fSs --connect-timeout 20 --max-time 30 https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/gambling-porn-only/hosts \
   | sed 's/#.*//' \
   | sed 's/[[:space:]]*$//' \
   | sed '/^[[:space:]]*$/d' \
