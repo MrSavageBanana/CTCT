@@ -127,13 +127,15 @@ undo_closetabs_service_enable() { sudo systemctl disable --now closetabs; }
 undo_move_matt_daemon() { sudo mv /etc/matt_damon "$HOME/CTCT"; }
 undo_create_hooks_bin_dir() { sudo mv /etc/pacman.d/hooks.bin /; }
 undo_move_vivaldi_sh() { sudo mv /etc/pacman.d/hooks.bin/vivaldimods.sh "$HOME/CTCT"; }
-undo_create_hooks_dir() { sudo mv /etc/pacman.d/hooks "$HOME/.local/share/Trash/files"; }
+undo_create_hooks_dir() {
+  sudo mv /etc/pacman.d/hooks "$HOME/.local/share/Trash/files"
+}
 undo_vivaldiupdate_hook() { sudo mv /etc/pacman.d/hooks/vivaldiupdate.hook "$HOME/CTCT"; }
 undo_grub1_hook() { sudo mv /etc/pacman.d/hooks/grub1.hook "$HOME/CTCT"; }
 undo_grub2_hook() { sudo mv /etc/pacman.d/hooks/grub2.hook "$HOME/CTCT"; }
 undo_vivaldi_JS_SCRIPTS() {
   cd /opt/vivaldi/resources/vivaldi/
-  mv "${applied_vivaldi_mods[@]}" "$HOME/CTCT/Custom_Vivaldi_JS(AI)"
+  sudo mv "${applied_vivaldi_mods[@]}" "$HOME/CTCT/Custom_Vivaldi_JS(AI)"
   cd -
 }
 undo_vivaldimods_sh() {
@@ -273,6 +275,14 @@ set -eEu
 
 echo "Grabbing current filesystem state"
 grab_dir_state oldstate.txt
+# this directory is referenced so much that i decided to just check for it's existency almost immediately
+if [[ ! -d $HOME/.local/share/Trash/files ]]; then
+  if mkdir -p "$HOME/.local/share/Trash/files"; then
+    reverse_operation+=("undo_create_trash_dir")
+  else
+    perform_rollback
+  fi
+fi
 # Get repo
 cd "$HOME"
 git clone https://github.com/MrSavageBanana/CTCT.git 1>/dev/null || exit
@@ -402,13 +412,6 @@ fi
 
 cd "$HOME"
 # Removing GRUB_PASSWORD-KEEP_SAFE.txt and create a backup of /etc/grub.d/40_custom
-if [[ ! -d $HOME/.local/share/Trash/files ]]; then
-  if mkdir -p "$HOME/.local/share/Trash/files"; then
-    reverse_operation+=("undo_create_trash_dir")
-  else
-    perform_rollback
-  fi
-fi
 
 if [[ -r GRUB_PASSWORD-KEEP_SAFE.txt ]]; then # this could be problematic if the user doesn't name their unlocked file GRUB_PASSWORD-KEEP_SAFE.txt
   echo "Removing existing password"
