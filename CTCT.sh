@@ -34,7 +34,7 @@ declare -a hooks_setup=()
 declare -a reverse_hooks_setup=()
 # TODO: Attempt to fix the missing dependencies. DEPENDS ON: Auto Detect the system's package manager and use it instead of just pacman. At least Debian and Fedora
 check_dependencies() {
-  local deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" "awk" "dialog" "git" "grep" "curl" "chpasswd" "chattr" "systemctl" "grep" "tar" "diff" "find" "md5sum" "sort" "bash" "tr" "fold" "head" "shred")
+  local deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" "awk" "dialog" "git" "grep" "curl" "chpasswd" "chattr" "systemctl" "grep" "tar" "diff" "find" "md5sum" "sort" "bash" "tr" "fold" "head" "shred" "whoami" "pacman" "basename" "pgrep" "kill" "xargs" "uniq" "file" "strace")
   for dep in "${deps[@]}"; do
     if ! command -v "$dep" >/dev/null 2>&1; then
       missing_dependencies+=("$dep")
@@ -115,8 +115,6 @@ perform_rollback() {
 
     ((secs--))
   done
-
-  read -t 10 -r _ || true
   diff --side-by-side --color=always --suppress-common-lines "$HOME/oldstate.txt" "$HOME/newstate.txt"
   echo "Leftover Check Finished. Examine for any modified files"
   exit 1
@@ -254,8 +252,10 @@ affected_dirs=(
 grab_dir_state() {
   local state_name="$1"
   for d in "${affected_dirs[@]}"; do
-    echo "$d"
-    sudo find "$d" -maxdepth 1 -type f -exec md5sum {} + | sort >>"$HOME/$state_name"
+    if [[ -e $d ]]; then
+      echo "$d"
+      sudo find "$d" -maxdepth 1 -type f -exec md5sum {} + | sort >>"$HOME/$state_name"
+    fi
   done
 }
 set +eEuo pipefail # turns off pipefail now that the script didn't fail to create the variables
@@ -281,7 +281,7 @@ cd CTCT || exit
 closetabs_creation() { cp -f closetabs.service /etc/systemd/system; }
 move_matt_daemon() { mv --force matt_damon.sh /etc/; }
 closetabs_service_enable() { sudo systemctl enable --now closetabs; }
-service_setup=("closetabs_creation" "move_matt_dameon" "closetabs_service_enable")
+service_setup=("closetabs_creation" "move_matt_daemon" "closetabs_service_enable")
 reverse_service_setup=("undo_closetabs_creation" "undo_move_matt_daemon" "undo_closetabs_service_enable")
 for n in {1..3}; do
   if "${service_setup[$n]}"; then
@@ -517,7 +517,6 @@ while [ "$secs" -ge 0 ]; do
   ((secs--))
 done
 
-read -t 10 -r _ || true
 selected_end_date=$(dialog --clear --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
 echo "select a time to end the script"
 selected_end_time=$(dialog --clear --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
