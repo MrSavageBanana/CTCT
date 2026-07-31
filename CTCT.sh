@@ -104,6 +104,19 @@ perform_rollback() {
   echo "Rollback complete. Checking for leftovers."
   echo "this may take up to one minute"
   grab_dir_state newstate.txt
+  echo "Ready. Click enter to continue"
+  secs=90
+  while [ "$secs" -ge 0 ]; do
+    echo -ne "Auto Continuing in $secs seconds...\033[0K\r"
+
+    if read -t 1 -r _; then
+      break
+    fi
+
+    ((secs--))
+  done
+
+  read -t 10 -r _ || true
   diff --side-by-side --color=always --suppress-common-lines "$HOME/oldstate.txt" "$HOME/newstate.txt"
   echo "Leftover Check Finished. Examine for any modified files"
   exit 1
@@ -113,7 +126,7 @@ trap "" SIGINT SIGTSTP SIGQUIT # can't risk the user exiting the script and mess
 # Checks Ends
 # Rollback Functions Start
 undo_closetabs_creation() { mv /etc/systemd/system/closetabs.service "$HOME/CTCT"; }
-undo_closetabs_service_enable() { systemctl disable --now closetabs; }
+undo_closetabs_service_enable() { sudo systemctl disable --now closetabs; }
 undo_move_matt_daemon() { mv /etc/matt_damon "$HOME/CTCT"; }
 undo_create_hooks_bin_dir() { mv /etc/pacman.d/hooks.bin /; }
 undo_move_vivaldi_sh() { mv /etc/pacman.d/hooks.bin/vivaldimods.sh "$HOME/CTCT"; }
@@ -267,12 +280,14 @@ cd CTCT || exit
 # Service
 closetabs_creation() { cp -f closetabs.service /etc/systemd/system; }
 move_matt_daemon() { mv --force matt_damon.sh /etc/; }
-closetabs_service_enable() { systemctl enable --now closetabs; }
+closetabs_service_enable() { sudo systemctl enable --now closetabs; }
 service_setup=("closetabs_creation" "move_matt_dameon" "closetabs_service_enable")
 reverse_service_setup=("undo_closetabs_creation" "undo_move_matt_daemon" "undo_closetabs_service_enable")
 for n in {1..3}; do
   if "${service_setup[$n]}"; then
     reverse_operation+=("${reverse_service_setup[$n]}")
+  else
+    perform_rollback
   fi
 done
 # Hooks
