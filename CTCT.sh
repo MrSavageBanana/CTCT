@@ -104,7 +104,7 @@ perform_rollback() {
   echo "Rollback complete. Checking for leftovers."
   echo "this may take up to one minute"
   grab_dir_state newstate.txt
-  echo "Ready. Click enter to continue"
+  echo "Ready. Click enter to view diff"
   secs=90
   while [ "$secs" -ge 0 ]; do
     echo -ne "Auto Continuing in $secs seconds...\033[0K\r"
@@ -257,6 +257,7 @@ grab_dir_state() {
       sudo find "$d" -maxdepth 1 -type f -exec md5sum {} + | sort >>"$HOME/$state_name"
     fi
   done
+  echo "Finished capturing filesystem state"
 }
 set +eEuo pipefail # turns off pipefail now that the script didn't fail to create the variables
 # References End
@@ -271,15 +272,16 @@ set -eEu
 # fi
 # But that is not a priority. Priority is making sure that this script works with it's 500 lines then reducing it using this method.
 
+echo "Grabbing current filesystem state"
 grab_dir_state oldstate.txt
 # Get repo
 cd "$HOME"
-git clone https://github.com/MrSavageBanana/CTCT.git || exit
+git clone https://github.com/MrSavageBanana/CTCT.git 1>/dev/null || exit
 cd CTCT || exit
 
 # Service
-closetabs_creation() { cp -f closetabs.service /etc/systemd/system; }
-move_matt_daemon() { mv --force matt_damon.sh /etc/; }
+closetabs_creation() { sudo cp -f closetabs.service /etc/systemd/system; }
+move_matt_daemon() { sudo mv --force matt_damon.sh /etc/; }
 closetabs_service_enable() { sudo systemctl enable --now closetabs; }
 service_setup=("closetabs_creation" "move_matt_daemon" "closetabs_service_enable")
 reverse_service_setup=("undo_closetabs_creation" "undo_move_matt_daemon" "undo_closetabs_service_enable")
