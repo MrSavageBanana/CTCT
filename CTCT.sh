@@ -32,8 +32,9 @@ declare -a service_setup=()
 declare -a reverse_service_setup=()
 declare -a hooks_setup=()
 declare -a reverse_hooks_setup=()
+# TODO: Attempt to fix the missing dependencies. DEPENDS ON: Auto Detect the system's package manager and use it instead of just pacman. At least Debian and Fedora
 check_dependencies() {
-  local deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" "awk" "dialog")
+  local deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" "awk" "dialog" "git" "grep" "curl" "chpasswd" "chattr" "systemctl" "grep" "tar" "diff" "find" "md5sum" "sort" "bash" "tr" "fold" "head" "shred")
   for dep in "${deps[@]}"; do
     if ! command -v "$dep" >/dev/null 2>&1; then
       missing_dependencies+=("$dep")
@@ -211,7 +212,8 @@ important_files=('/etc/hosts' '/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pac
 backup_timestamp=$(date '+%Y-%m-%dT%H-%M-%S')
 readonly backup_timestamp
 readonly manual_password="wompwomp"                                                      # manual_password is for debugging/developing only
-readonly rand32charstr=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1) # change it from 32 to another amount of characters if you want to easily be able to jailbreak it
+readonly rand32charstr=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1) # change it from 32 to another amount of characters if you want to easily be able to jailbreak it.
+# TODO: replace the "tr" command with an "awk" command instead.
 readonly chosen_password="$manual_password"
 grub_password=$(printf '%s\n%s\n' "$chosen_password" "$chosen_password" |
   grub-mkpasswd-pbkdf2 |
