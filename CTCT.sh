@@ -20,7 +20,6 @@ if [ "$EUID" -eq 0 ]; then
   echo "Don't run as root. You will be prompted for sudo privileges."
   exit
 fi
-sudo -vk
 declare -a missing_dependencies=()
 declare -a overwritten_files=()
 declare -a applied_vivaldi_mods=()
@@ -123,15 +122,15 @@ trap 'perform_rollback' ERR
 trap "" SIGINT SIGTSTP SIGQUIT # can't risk the user exiting the script and messing with things mid through
 # Checks Ends
 # Rollback Functions Start
-undo_closetabs_creation() { mv /etc/systemd/system/closetabs.service "$HOME/CTCT"; }
+undo_closetabs_creation() { sudo mv /etc/systemd/system/closetabs.service "$HOME/CTCT"; }
 undo_closetabs_service_enable() { sudo systemctl disable --now closetabs; }
-undo_move_matt_daemon() { mv /etc/matt_damon "$HOME/CTCT"; }
-undo_create_hooks_bin_dir() { mv /etc/pacman.d/hooks.bin /; }
-undo_move_vivaldi_sh() { mv /etc/pacman.d/hooks.bin/vivaldimods.sh "$HOME/CTCT"; }
-undo_create_hooks_dir() { mv /etc/pacman.d/hooks "$HOME/.local/share/Trash/files"; }
-undo_vivaldiupdate_hook() { mv /etc/pacman.d/hooks/vivaldiupdate.hook "$HOME/CTCT"; }
-undo_grub1_hook() { mv /etc/pacman.d/hooks/grub1.hook "$HOME/CTCT"; }
-undo_grub2_hook() { mv /etc/pacman.d/hooks/grub2.hook "$HOME/CTCT"; }
+undo_move_matt_daemon() { sudo mv /etc/matt_damon "$HOME/CTCT"; }
+undo_create_hooks_bin_dir() { sudo mv /etc/pacman.d/hooks.bin /; }
+undo_move_vivaldi_sh() { sudo mv /etc/pacman.d/hooks.bin/vivaldimods.sh "$HOME/CTCT"; }
+undo_create_hooks_dir() { sudo mv /etc/pacman.d/hooks "$HOME/.local/share/Trash/files"; }
+undo_vivaldiupdate_hook() { sudo mv /etc/pacman.d/hooks/vivaldiupdate.hook "$HOME/CTCT"; }
+undo_grub1_hook() { sudo mv /etc/pacman.d/hooks/grub1.hook "$HOME/CTCT"; }
+undo_grub2_hook() { sudo mv /etc/pacman.d/hooks/grub2.hook "$HOME/CTCT"; }
 undo_vivaldi_JS_SCRIPTS() {
   cd /opt/vivaldi/resources/vivaldi/
   mv "${applied_vivaldi_mods[@]}" "$HOME/CTCT/Custom_Vivaldi_JS(AI)"
@@ -147,7 +146,7 @@ undo_vivaldimods_sh() {
 }
 remove_corrected_vivaldi_entry() { mv "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/CTCT"; }
 reverse_immute() { sudo chattr -i "$1"; }
-binary_to_remove() { sed "/$user ALL=(root) NOPASSWD: /usr/bin/$1/d" /etc/sudoers.d/90-allowed-commands; } # this could fail if the username somehow had a regex special character
+binary_to_remove() { sudo sed "/$user ALL=(root) NOPASSWD: /usr/bin/$1/d" /etc/sudoers.d/90-allowed-commands; } # this could fail if the username somehow had a regex special character
 undo_create_trash_dir() { rm -rf "$HOME/.local/share/Trash/files"; }
 undo_move_password_file() { mv "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME"; }
 undo_backup_grub_custom() { sudo mv --force /etc/grub.d/40_custom.bak /etc/grub.d/40_custom; }
@@ -159,8 +158,8 @@ undo_unrestrict_grub() { sudo sed -i -e 's/--class os --unrestricted/--class os/
 undo_restrict_grub() { sudo sed -i "s/submenu_id_option 'gnulinux-advanced/menuentry_id_option 'gnulinux-advanced/g" /etc/grub.d/10_linux; }
 # undo_create_grub1() { rm grub1.hook; }
 # undo_create_grub2() { rm grub2.hook; }
-undo_create_etc_dir() { mv /etc "$HOME/.local/share/Trash/files/"; } # this only removes etc if you didn't have it before
-undo_create_pacman_d_dir() { mv /etc/pacman.d "$HOME/.local/share/Trash/files/"; }
+undo_create_etc_dir() { sudo mv /etc "$HOME/.local/share/Trash/files/"; } # this only removes etc if you didn't have it before
+undo_create_pacman_d_dir() { sudo mv /etc/pacman.d "$HOME/.local/share/Trash/files/"; }
 #undo_move_hooks() {
 #    sudo mv /etc/pacman.d/hooks/grub1.hook "$HOME"
 #    sudo mv /etc/pacman.d/hooks/grub2.hook "$HOME"
@@ -184,7 +183,7 @@ undo_create_pacman_d_dir() { mv /etc/pacman.d "$HOME/.local/share/Trash/files/";
 binaries_to_allow=("curl" "jq" "adb" "bat" "blkid" "cat" "chmod" "docker-compose" "du" "flatpak" "fuser" "grep" "journalctl" "killall" "ln" "mv" "nbfc" "pkill" "rm" "rmpc" "sensors-detect" "sleep" "ss" "tailscale" "tlp" "tlp-stat" "touch" "ufw" "systemctl status" "systemctl is-active" "systemctl list-units" "systemctl list-unit-files" "systemctl show" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *")
 undo_create_root() { echo "It is not safe for this script to undo the root password creation automatically. Check file for the root password to manually change."; }
 undo_create_local_bin_dir() { echo "This folder needs to be here. Not going to undo it"; }
-undo_include_sudoers_d_dir() { mv /etc/sudoers.d/ "$HOME/.local/share/Trash/files/"; }
+undo_include_sudoers_d_dir() { sudo mv /etc/sudoers.d/ "$HOME/.local/share/Trash/files/"; }
 undo_install_go() { rm -rf /usr/local/go; }
 undo_curl_go() { rm "$HOME/CTCT/go"; }
 undo_install_tle() { rm "$HOME/go/bin/tle"; }
@@ -294,17 +293,17 @@ for n in {1..3}; do
 done
 # Hooks
 if [[ ! -d /etc/pacman.d/hooks.bin ]]; then
-  if mkdir -p /etc/pacman.d/hooks.bin; then
+  if sudo mkdir -p /etc/pacman.d/hooks.bin; then
     reverse_operation+=("undo_create_hooks_bin_dir")
   else
     perform_rollback
   fi
 fi
 
-move_vivaldi_sh() { mv --force vivaldimods.sh /etc/pacman.d/hooks.bin; }
-vivaldiupdate_hook() { mv --force vivaldiupdate.hook /etc/pacman.d/hooks; }
-grub1_hook() { mv --force grub1.hook /etc/pacman.d/hooks; }
-grub2_hook() { mv --force grub2.hook /etc/pacman.d/hooks; }
+move_vivaldi_sh() { sudo mv --force vivaldimods.sh /etc/pacman.d/hooks.bin; }
+vivaldiupdate_hook() { sudo mv --force vivaldiupdate.hook /etc/pacman.d/hooks; }
+grub1_hook() { sudo mv --force grub1.hook /etc/pacman.d/hooks; }
+grub2_hook() { sudo mv --force grub2.hook /etc/pacman.d/hooks; }
 hooks_setup=("move_vivaldi_sh" "vivaldiupdate_hook" "grub1_hook" "grub2_hook")
 reverse_hooks_setup=("undo_move_vivaldi_sh" "undo_vivaldiupdate_hook" "undo_grub1_hook" "undo_grub2_hook")
 for n in {1..3}; do
@@ -455,7 +454,6 @@ set +eEuo pipefail
 # Same as running the commands in the hooks
 echo "Unrestricting GRUB's linux boot entries..."
 
-# sudo sed -i -e 's/--class os --unrestricted/--class os/g' -e 's/--class os/--class os --unrestricted/g' /etc/grub.d/10_linux; then # removes it if it exists then adds it back again.
 if sudo sed -i 's/--class os\b\( --unrestricted\)*/--class os --unrestricted/g' /etc/grub.d/10_linux; then
   reverse_operation+=("undo_unrestrict_grub")
 else
