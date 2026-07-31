@@ -88,6 +88,7 @@ declare -a reverse_operation=()
 perform_rollback() {
   echo -e "\n[!] ERROR DETECTED. INITIATING ROLLBACK..."
 
+  set +e
   # Get the total number of items in the stack
   total_items=${#reverse_operation[@]}
 
@@ -127,9 +128,7 @@ undo_closetabs_service_enable() { sudo systemctl disable --now closetabs; }
 undo_move_matt_daemon() { sudo mv /etc/matt_damon "$HOME/CTCT"; }
 undo_create_hooks_bin_dir() { sudo mv /etc/pacman.d/hooks.bin /; }
 undo_move_vivaldi_sh() { sudo mv /etc/pacman.d/hooks.bin/vivaldimods.sh "$HOME/CTCT"; }
-undo_create_hooks_dir() {
-  sudo mv /etc/pacman.d/hooks "$HOME/.local/share/Trash/files"
-}
+undo_create_hooks_dir() { sudo mv /etc/pacman.d/hooks "$HOME/.local/share/Trash/files"; }
 undo_vivaldiupdate_hook() { sudo mv /etc/pacman.d/hooks/vivaldiupdate.hook "$HOME/CTCT"; }
 undo_grub1_hook() { sudo mv /etc/pacman.d/hooks/grub1.hook "$HOME/CTCT"; }
 undo_grub2_hook() { sudo mv /etc/pacman.d/hooks/grub2.hook "$HOME/CTCT"; }
@@ -139,10 +138,10 @@ undo_vivaldi_JS_SCRIPTS() {
   cd -
 }
 undo_vivaldimods_sh() {
-  for JS in "${applied_vivaldi_mods[@]}"; do
+  for JS in "${applied_vivaldi_mods[@]:-}"; do
     sudo sed "/$JS/d" /opt/vivaldi/resources/vivaldi/window.html
   done
-  for sites in "${new_host_entries[@]}"; do # this can only work if we decide to run the function because the array which has all the newly added websites won't exist
+  for sites in "${new_host_entries[@]:-}"; do # this can only work if we decide to run the function because the array which has all the newly added websites won't exist
     sudo sed "/$sites/d" /etc/hosts
   done
 }
@@ -186,9 +185,9 @@ binaries_to_allow=("curl" "jq" "adb" "bat" "blkid" "cat" "chmod" "docker-compose
 undo_create_root() { echo "It is not safe for this script to undo the root password creation automatically. Check file for the root password to manually change."; }
 undo_create_local_bin_dir() { echo "This folder needs to be here. Not going to undo it"; }
 undo_include_sudoers_d_dir() { sudo mv /etc/sudoers.d/ "$HOME/.local/share/Trash/files/"; }
-undo_install_go() { rm -rf /usr/local/go; }
-undo_curl_go() { rm "$HOME/CTCT/go"; }
-undo_install_tle() { rm "$HOME/go/bin/tle"; }
+undo_install_go() { mv /usr/local/go "$HOME/.local/share/Trash/files/"; }
+undo_curl_go() { mv "$HOME/CTCT/go" "$HOME/.local/share/Trash/files/"; }
+undo_install_tle() { mv "$HOME/go/bin/tle" "$HOME/.local/share/Trash/files/"; }
 undo_tle_lock() { mv "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Trash/files/"; }
 # Rollback Functions End
 # References Begin
@@ -324,7 +323,7 @@ grub1_hook() { sudo mv --force grub1.hook /etc/pacman.d/hooks; }
 grub2_hook() { sudo mv --force grub2.hook /etc/pacman.d/hooks; }
 hooks_setup=("move_vivaldi_sh" "vivaldiupdate_hook" "grub1_hook" "grub2_hook")
 reverse_hooks_setup=("undo_move_vivaldi_sh" "undo_vivaldiupdate_hook" "undo_grub1_hook" "undo_grub2_hook")
-for n in {0..2}; do
+for n in {0..3}; do
   if "${hooks_setup[$n]}"; then
     reverse_operation+=("${reverse_hooks_setup[$n]}")
   fi
