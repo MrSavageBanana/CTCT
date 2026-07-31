@@ -292,13 +292,17 @@ for n in {1..3}; do
   fi
 done
 # Hooks
-if [[ ! -d /etc/pacman.d/hooks.bin ]]; then
-  if sudo mkdir -p /etc/pacman.d/hooks.bin; then
-    reverse_operation+=("undo_create_hooks_bin_dir")
+check_for_hooks_bin() { [[ ! -d /etc/pacman.d/hooks.bin ]]; }
+check_for_hooks() { [[ ! -d /etc/pacman.d/hooks ]]; }
+pacman_hooks_setup=("check_for_hooks_bin" "check_for_hooks")
+undo_pacman_hooks_setup=("undo_create_hooks_bin_dir" "undo_create_hooks_dir")
+for n in {0..1}; do
+  if "${pacman_hooks_setup[$n]}"; then
+    reverse_operation+=("${undo_pacman_hooks_setup[$n]}")
   else
     perform_rollback
   fi
-fi
+done
 
 move_vivaldi_sh() { sudo mv --force vivaldimods.sh /etc/pacman.d/hooks.bin; }
 vivaldiupdate_hook() { sudo mv --force vivaldiupdate.hook /etc/pacman.d/hooks; }
@@ -312,7 +316,7 @@ for n in {1..3}; do
   fi
 done
 # Javascript
-sudo pacman -S --needed vivaldi
+sudo pacman -S --needed --noconfirm vivaldi
 cd "Custom_Vivaldi_JS(AI)" || exit
 # This array needs to be upgraded by making all files in Custom_Vivaldi_JS be in it, regardless of name
 # If i decide to have the bundles of JS scripts as little packs, i will need to
@@ -491,13 +495,6 @@ fi
 if [[ ! -d /etc/pacman.d/ ]]; then
   if sudo mkdir -p /etc/pacman.d; then
     reverse_operation+=("undo_create_pacman_d_dir")
-  else
-    perform_rollback
-  fi
-fi
-if [[ ! -d /etc/pacman.d/hooks ]]; then
-  if sudo mkdir -p /etc/pacman.d/hooks; then
-    reverse_operation+=("undo_create_hooks_dir")
   else
     perform_rollback
   fi
