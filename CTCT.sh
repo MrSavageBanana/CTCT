@@ -56,7 +56,7 @@ check_dependencies() {
 }
 check_dependencies
 # we are unable to warn the users about the JS files that may be overwritten unless we ping the github repo (which we will already do when we clone) to check what files might be overwritten
-potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/matt_damon.sh" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock")
+potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/matt_damon.sh" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/oldstate.txt" "$HOME/newstate.txt")
 for file in "${potentially_overwritten_files[@]}"; do
   if [[ -e "$file" ]]; then
     overwritten_files+=("$file")
@@ -284,7 +284,7 @@ move_matt_daemon() { sudo mv --force matt_damon.sh /etc/; }
 closetabs_service_enable() { sudo systemctl enable --now closetabs; }
 service_setup=("closetabs_creation" "move_matt_daemon" "closetabs_service_enable")
 reverse_service_setup=("undo_closetabs_creation" "undo_move_matt_daemon" "undo_closetabs_service_enable")
-for n in {1..3}; do
+for n in {0..2}; do
   if "${service_setup[$n]}"; then
     reverse_operation+=("${reverse_service_setup[$n]}")
   else
@@ -310,7 +310,7 @@ grub1_hook() { sudo mv --force grub1.hook /etc/pacman.d/hooks; }
 grub2_hook() { sudo mv --force grub2.hook /etc/pacman.d/hooks; }
 hooks_setup=("move_vivaldi_sh" "vivaldiupdate_hook" "grub1_hook" "grub2_hook")
 reverse_hooks_setup=("undo_move_vivaldi_sh" "undo_vivaldiupdate_hook" "undo_grub1_hook" "undo_grub2_hook")
-for n in {1..3}; do
+for n in {0..2}; do
   if "${hooks_setup[$n]}"; then
     reverse_operation+=("${reverse_hooks_setup[$n]}")
   fi
