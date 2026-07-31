@@ -27,6 +27,11 @@ declare -a applied_vivaldi_mods=()
 declare -a potentially_overwritten_files=()
 declare -a binaries_to_allow=()
 declare -a important_files=()
+declare -a affected_dirs=()
+declare -a service_setup=()
+declare -a reverse_service_setup=()
+declare -a hooks_setup=()
+declare -a reverse_hooks_setup=()
 check_dependencies() {
   local deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" "awk" "dialog")
   for dep in "${deps[@]}"; do
@@ -51,7 +56,7 @@ check_dependencies() {
 }
 check_dependencies
 # we are unable to warn the users about the JS files that may be overwritten unless we ping the github repo (which we will already do when we clone) to check what files might be overwritten
-potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/matt_damon.sh" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt")
+potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/matt_damon.sh" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock")
 for file in "${potentially_overwritten_files[@]}"; do
   if [[ -e "$file" ]]; then
     overwritten_files+=("$file")
@@ -95,7 +100,11 @@ perform_rollback() {
     $current_undo_command
   done
 
-  echo "Rollback complete. Exiting script."
+  echo "Rollback complete. Checking for leftovers."
+  echo "this may take up to one minute"
+  grab_dir_state newstate.txt
+  diff --side-by-side --color=always --suppress-common-lines "$HOME/oldstate.txt" "$HOME/newstate.txt"
+  echo "Leftover Check Finished. Examine for any modified files"
   exit 1
 }
 trap 'perform_rollback' ERR
@@ -164,6 +173,10 @@ binaries_to_allow=("curl" "jq" "adb" "bat" "blkid" "cat" "chmod" "docker-compose
 undo_create_root() { echo "It is not safe for this script to undo the root password creation automatically. Check file for the root password to manually change."; }
 undo_create_local_bin_dir() { echo "This folder needs to be here. Not going to undo it"; }
 undo_include_sudoers_d_dir() { mv /etc/sudoers.d/ "$HOME/.local/share/Trash/files/"; }
+undo_install_go() { rm -rf /usr/local/go; }
+undo_curl_go() { rm "$HOME/CTCT/go"; }
+undo_install_tle() { rm "$HOME/go/bin/tle"; }
+undo_tle_lock() { mv "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Trash/files/"; }
 # Rollback Functions End
 # References Begin
 user=$(whoami)
@@ -175,22 +188,6 @@ apply_vivaldi_mods() {
   readarray <vivaldimods_output.txt new_host_entries
   mv vivaldimods_output.txt "$HOME/.local/share/Trash/files/"
 }
-
-# since the vivaldimods.sh was just run, the user likely has an internet connection at this point and it is safer to install go and tle right now
-if [[ ! -e /usr/local/go ]]; then
-  echo "Downloading go zip"
-  curl -s https://dl.google.com/go/go1.26.5.linux-amd64.tar.gz --output go.tar.gz
-  sudo tar -C /usr/local/ -xzf go.tar.gz
-fi
-if [[ -e /usr/local/go ]]; then
-  /usr/local/go/bin/go install github.com/drand/tlock/cmd/tle@latest
-else
-  echo "go wasn't installed"
-  exit
-fi
-if ! up_to_date_info=$(curl -sf https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/info); then
-  drand_failed=true
-fi
 
 correct_flag_helper() { # 189
   if [[ -e "$HOME/.local/share/applications/vivaldi-stable.desktop" ]]; then
@@ -224,6 +221,28 @@ current_date=$(date)
 readonly current_date
 proper_format_grub_password="${grub_password/PBKDF2 hash of your password is /}"
 readonly proper_format_grub_password
+affected_dirs=(
+  "/tmp"
+  "/etc/systemd/system/"
+  "/etc"
+  "/etc/pacman.d/hooks/"
+  "/etc/pacman.d/hooks.bin/"
+  "$HOME/.local/share/applications/"
+  "$HOME"
+  "/opt/vivaldi/resources/vivaldi/"
+  "/etc/sudoers.d/"
+  "$HOME/.local/share/Trash/files/"
+  "/etc/grub.d/"
+  "/boot/grub/"
+  "/usr/local"
+)
+grab_dir_state() {
+  local state_name="$1"
+  for d in "${affected_dirs[@]}"; do
+    echo "$d"
+    sudo find "$d" -maxdepth 1 -type f -exec md5sum {} + | sort >>"$HOME/$state_name"
+  done
+}
 set +eEuo pipefail # turns off pipefail now that the script didn't fail to create the variables
 # References End
 set -eEu
@@ -237,27 +256,23 @@ set -eEu
 # fi
 # But that is not a priority. Priority is making sure that this script works with it's 500 lines then reducing it using this method.
 
+grab_dir_state oldstate.txt
 # Get repo
 cd "$HOME"
 git clone https://github.com/MrSavageBanana/CTCT.git || exit
 cd CTCT || exit
 
 # Service
-if cp -f closetabs.service /etc/systemd/system; then
-  reverse_operation+=("undo_closetabs_creation")
-else
-  perform_rollback
-fi
-if mv --force matt_damon.sh /etc/; then
-  reverse_operation+=("undo_move_matt_daemon")
-else
-  perform_rollback
-fi
-if systemctl enable --now closetabs; then
-  reverse_operation+=("undo_closetabs_service_enable")
-else
-  perform_rollback
-fi
+closetabs_creation() { cp -f closetabs.service /etc/systemd/system; }
+move_matt_daemon() { mv --force matt_damon.sh /etc/; }
+closetabs_service_enable() { systemctl enable --now closetabs; }
+service_setup=("closetabs_creation" "move_matt_dameon" "closetabs_service_enable")
+reverse_service_setup=("undo_closetabs_creation" "undo_move_matt_daemon" "undo_closetabs_service_enable")
+for n in {1..3}; do
+  if "${service_setup[$n]}"; then
+    reverse_operation+=("${reverse_service_setup[$n]}")
+  fi
+done
 # Hooks
 if [[ ! -d /etc/pacman.d/hooks.bin ]]; then
   if mkdir -p /etc/pacman.d/hooks.bin; then
@@ -266,30 +281,18 @@ if [[ ! -d /etc/pacman.d/hooks.bin ]]; then
     perform_rollback
   fi
 fi
-if mv --force vivaldimods.sh /etc/pacman.d/hooks.bin; then
-  reverse_operation+=("undo_move_vivaldi_sh")
-else
-  perform_rollback
-fi
 
-if mv --force vivaldiupdate.hook /etc/pacman.d/hooks; then
-  reverse_operation+=("undo_vivaldiupdate_hook")
-else
-  perform_rollback
-fi
-
-if mv --force grub1.hook /etc/pacman.d/hooks; then
-  reverse_operation+=("undo_grub1_hook")
-else
-  perform_rollback
-fi
-
-if mv --force grub2.hook /etc/pacman.d/hooks; then
-  reverse_operation+=("undo_grub2_hook")
-else
-  perform_rollback
-fi
-
+move_vivaldi_sh() { mv --force vivaldimods.sh /etc/pacman.d/hooks.bin; }
+vivaldiupdate_hook() { mv --force vivaldiupdate.hook /etc/pacman.d/hooks; }
+grub1_hook() { mv --force grub1.hook /etc/pacman.d/hooks; }
+grub2_hook() { mv --force grub2.hook /etc/pacman.d/hooks; }
+hooks_setup=("move_vivaldi_sh" "vivaldiupdate_hook" "grub1_hook" "grub2_hook")
+reverse_hooks_setup=("undo_move_vivaldi_sh" "undo_vivaldiupdate_hook" "undo_grub1_hook" "undo_grub2_hook")
+for n in {1..3}; do
+  if "${hooks_setup[$n]}"; then
+    reverse_operation+=("${reverse_hooks_setup[$n]}")
+  fi
+done
 # Javascript
 sudo pacman -S --needed vivaldi
 cd "Custom_Vivaldi_JS(AI)" || exit
@@ -316,13 +319,32 @@ else
   perform_rollback
 fi
 
-# This part is to help the user with running the correct flag for vivaldi without having to type. They can edit this freely as it shouldn't effect effectiveness
-# somehow i need to rollback this
-
 if correct_flag_helper; then
   reverse_operation+=("remove_corrected_vivaldi_entry")
 else
   perform_rollback
+fi
+
+# since the vivaldimods.sh was just run, the user likely has an internet connection at this point and it is safer to install go and tle right now
+if [[ ! -e /usr/local/go ]]; then
+  echo "Downloading go zip"
+  curl -s https://dl.google.com/go/go1.26.5.linux-amd64.tar.gz --output "$HOME/CTCT/go.tar.gz"
+  reverse_operation+=("undo_curl_go")
+  sudo tar -C /usr/local/ -xzf go.tar.gz
+  reverse_operation+=("undo_install_go")
+else
+  perform_rollback
+fi
+if [[ -e /usr/local/go ]]; then
+  /usr/local/go/bin/go install github.com/drand/tlock/cmd/tle@latest
+  reverse_operation+=("undo_install_tle")
+else
+  echo "go wasn't installed"
+  perform_rollback
+  exit
+fi
+if ! up_to_date_info=$(curl -sf https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/info); then
+  drand_failed=true
 fi
 
 # Edit /etc/sudoers
@@ -348,11 +370,7 @@ else
   perform_rollback
 fi
 
-# Might want to integrate a way to add a timer so the user can be given back the root privileges and the Grub password can be removed timer so the user can be given back the root privileges and the Grub password can be removed.
-# Remove Root privileges from the current user. - need to find out what groups the user is part of which has sudo
-# GRUB.sh to stop editing boot parameters
-# Ask user to find someone to do the bootloader BIOS if we can find no way to create a BIOS password for any computer
-# Talk to Claude for ideas on how to help the person if they have no one to trust with the bios. Least we can do is provide a quick, easy to run script that the user can oneshot into the command line and be rid of any distractions
+#TODO: Remove Root privileges from the current user. - need to find out what groups the user is part of which has sudo
 
 # GRUB.sh Starts
 
@@ -366,7 +384,7 @@ if [[ ! -d $HOME/.local/share/Trash/files ]]; then
   fi
 fi
 
-if [[ -r GRUB_PASSWORD-KEEP_SAFE.txt ]]; then
+if [[ -r GRUB_PASSWORD-KEEP_SAFE.txt ]]; then # this could be problematic if the user doesn't name their unlocked file GRUB_PASSWORD-KEEP_SAFE.txt
   echo "Removing existing password"
 
   if mv "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/.local/share/Trash/files"; then
@@ -374,6 +392,7 @@ if [[ -r GRUB_PASSWORD-KEEP_SAFE.txt ]]; then
   else
     perform_rollback
   fi
+
   if sudo cp /etc/grub.d/40_custom /etc/grub.d/40_custom.bak; then
     reverse_operation+=("undo_backup_grub_custom")
   else
@@ -391,58 +410,15 @@ fi
 echo "Storing GRUB password..."
 
 if {
-  echo "KEEP THE FOLLOWING PASSWORD SAFE. You will need the following password to enter into GRUB: "
+  echo "KEEP THE FOLLOWING PASSWORD SAFE. You will need the following password to enter into GRUB and system: "
   echo "${chosen_password}"
   echo "Last updated ${current_date}"
-} >>GRUB_PASSWORD-KEEP_SAFE.txt; then # for a period of time until this file is shred, someone could theoretically see what is inside it. NOt sure how to stop this.
+} >>GRUB_PASSWORD-KEEP_SAFE.txt; then # for a period of time until this file is shred, someone could theoretically see what is inside it. Not sure how to stop this.
   reverse_operation+=("undo_create_password_file")
 else
   perform_rollback
 fi
 
-echo "select a date to stop focussing"
-echo "Click enter to continue"
-secs=10
-while [ "$secs" -ge 0 ]; do
-  echo -ne "Continuing in $secs seconds...\033[0K\r"
-
-  if read -t 1 -r _; then
-    break
-  fi
-
-  ((secs--))
-done
-
-read -t 10 -r _ || true
-selected_end_date=$(dialog --clear --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
-echo "select a time to end the script"
-selected_end_time=$(dialog --clear --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
-ending="$selected_end_date $selected_end_time"
-ending_epoch=$(date -d "$ending" +%s)
-if [[ $drand_failed == "true" ]]; then
-  # these are the likely defaults.
-  genesis="1692803367"
-  period="3"
-  hash="52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
-elif [[ $drand_failed != "true" ]]; then
-  genesis=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $14}')
-  period=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $10}')
-  hash=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $19}')
-fi
-round=$((((ending_epoch - genesis) / period) + 1))
-
-if [[ -e "$HOME/go/bin/tle" ]]; then
-  "$HOME/go/bin/tle" -e -c "$hash" -r "$round" -o "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt"
-  if [[ ! -s "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" ]]; then
-    echo round "$round" is in the past
-  else
-    echo "COMPLETE"
-    shred "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt" # shred will overwrite the file and ensure that any file recovery fails. A person could run SystemRescue and recover the file easily if the file wasn't overwritten
-  fi
-else
-  echo "tle wasn't installed"
-  exit
-fi
 set -eEuo pipefail
 echo "sudo is needed for appending to /etc/grub.d/40_custom"
 # This deletes both the password_pbkdf2 and the superusers line at once
@@ -485,7 +461,7 @@ else
   perform_rollback
 fi
 
-# I don't know if this is needed?
+# I don't know if this check is needed?
 # setting up hooks to make this persistent
 if [[ ! -d /etc/ ]]; then
   if sudo mkdir -p /etc; then
@@ -511,6 +487,62 @@ if [[ ! -d /etc/pacman.d/hooks ]]; then
 fi
 
 # end of grub setup
+echo "select a date to stop focussing"
+echo "Click enter to continue"
+secs=10
+while [ "$secs" -ge 0 ]; do
+  echo -ne "Auto Continuing in $secs seconds...\033[0K\r"
+
+  if read -t 1 -r _; then
+    break
+  fi
+
+  ((secs--))
+done
+
+read -t 10 -r _ || true
+selected_end_date=$(dialog --clear --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
+echo "select a time to end the script"
+selected_end_time=$(dialog --clear --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
+ending="$selected_end_date $selected_end_time"
+ending_epoch=$(date -d "$ending" +%s)
+if [[ $drand_failed == "true" ]]; then
+  # these are the likely defaults.
+  genesis="1692803367"
+  period="3"
+  hash="52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
+elif [[ $drand_failed != "true" ]]; then
+  genesis=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $14}')
+  period=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $10}')
+  hash=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $19}')
+fi
+round=$((((ending_epoch - genesis) / period) + 1))
+
+if [[ -e "$HOME/go/bin/tle" ]]; then
+  "$HOME/go/bin/tle" -e -c "$hash" -r "$round" -o "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt"
+  if [[ ! -s "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" ]]; then
+    echo round "$round" is in the past. Try again
+    echo "Click enter to continue"
+    secs=10
+    while [ "$secs" -ge 0 ]; do
+      echo -ne "Auto Continuing in $secs seconds...\033[0K\r"
+
+      if read -t 1 -r _; then
+        break
+      fi
+
+      ((secs--))
+    done
+    selected_end_date
+  else
+    echo "COMPLETE"
+    reverse_operation+=("undo_tle_lock")
+    shred "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt" # shred will overwrite the file and ensure that any file recovery fails. A person could run SystemRescue and recover the file easily if the file wasn't overwritten
+  fi
+else
+  echo "tle wasn't installed"
+  perform_rollback
+fi
 
 # Immutable File; last step
 for important_file in "${important_files[@]}"; do
@@ -536,4 +568,5 @@ if echo "root:$chosen_password" | sudo chpasswd; then
 else
   perform_rollback
 fi
+
 mv "$HOME/CTCT" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}"

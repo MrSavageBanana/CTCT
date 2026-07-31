@@ -36,17 +36,17 @@ ANCHOR="<body>"
 # removed youtube.js
 # HistPass.js
 #INSERTS=('startpage-wallpaper.js' 'bridge.js' 'autosave.js' 'loading.js' 'custom.js' 'dialogTab.js' 'tree.js' 'monochrome-icons.js' 'todoistDialog.js''autocomplete-domain.js' 'toast.js' 'yandex.js' 'HibernatePanels.js' 'Markdown.js' 'Media.js')
-for file in "opt/vivaldi/resources/vivaldi"/*.js; do
+for file in "/opt/vivaldi/resources/vivaldi"/*.js; do
   [ -e "$file" ] || continue
   fname=$(basename "$file")
   case "$fname" in
   *bundle* | *background-service-worker* | *devtools*) continue ;;
-  *) echo "$fname" >>/home/shayan/tmpfilevivaldimodssh.txt ;;
+  *) echo "$fname" >>"$HOME/tmpfilevivaldimodssh.txt" ;;
   esac
 done
-readarray </home/shayan/tmpfilevivaldimodssh.txt INSERTS
-rm /home/shayan/tmpfilevivaldimodssh.txt
-INSERTS=('video.js' 'shorts.js' 'reddit_hp.js' 'reddit.js' 'youtubeNU.js' 'youtubesearch.js' 'youtubeautoplay.js' 'ytblur.js' 'YTChannel.js' 'ythover.js')
+readarray <"$HOME/tmpfilevivaldimodssh.txt" INSERTS
+rm "$HOME/tmpfilevivaldimodssh.txt"
+INSERTS+=('video.js' 'shorts.js' 'reddit_hp.js' 'reddit.js' 'youtubeNU.js' 'youtubesearch.js' 'youtubeautoplay.js' 'ytblur.js' 'YTChannel.js' 'ythover.js')
 INSERT_END=("${INSERTS[@]/%/\"></script>}")
 INSERT_BEGIN=("${INSERT_END[@]/#/<script src=\"}")
 # DEBUG MESSAGES

@@ -99,15 +99,13 @@ load_browsers() {
     fi
   done
 }
-while true; do
-  if [[ ! -e /etc/browsers.txt ]]; then
+if [[ ! -e /etc/browsers.txt ]]; then
+  load_browsers
+elif [[ -e /etc/browsers.txt ]]; then
+  if [[ "${#browsers[@]}" -eq 0 ]]; then
     load_browsers
-  elif [[ -e /etc/browsers.txt ]]; then
-    if [[ "${#browsers[@]}" -eq 0 ]]; then
-      load_browsers
-    fi
   fi
-  for browser in "${browsers[@]}"; do
-    check_browser "$browser"
-  done
+fi
+for browser in "${browsers[@]}"; do
+  check_browser "$browser"
 done
