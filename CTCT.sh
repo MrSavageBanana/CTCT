@@ -56,6 +56,7 @@ check_dependencies() {
 }
 check_dependencies
 # we are unable to warn the users about the JS files that may be overwritten unless we ping the github repo (which we will already do when we clone) to check what files might be overwritten
+# TODO: Also warn the user for the files that exist whether any of them have the immutable attribute. This will help the user find out why a file might not be deleting or being moved successfully
 potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/matt_damon.sh" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/oldstate.txt" "$HOME/newstate.txt")
 for file in "${potentially_overwritten_files[@]}"; do
   if [[ -e "$file" ]]; then
@@ -64,11 +65,17 @@ for file in "${potentially_overwritten_files[@]}"; do
 done
 if [[ "${#overwritten_files[@]}" -eq 0 ]]; then
   echo "No files will be overwritten"
+  if command -v vivaldi >/dev/null; then # checks if vivaldi is installed. if it is, there may be some js files. if not, there is no reason to suspect
+    echo "Also check for JS files"
+  fi
 elif [[ "${#overwritten_files[@]}" -ne 0 ]]; then
   echo "${#overwritten_files[@]}" 'overwritten_files!:'
   for overwritten_file in "${overwritten_files[@]}"; do
     echo "$overwritten_file"
   done
+  if command -v vivaldi >/dev/null; then # checks if vivaldi is installed. if it is, there may be some js files. if not, there is no reason to suspect
+    echo "Also check for JS files"
+  fi
   exit
 else
   echo "overwritten_files array is not working. Array:"
@@ -100,41 +107,42 @@ perform_rollback() {
     # Execute the command
     $current_undo_command
   done
+  if [[ -e "$HOME/oldstate.txt" ]]; then
+    echo "Rollback complete. Checking for leftovers."
+    echo "this may take up to one minute"
+    grab_dir_state newstate.txt
+    echo "Ready. Click enter to view diff"
+    secs=90
+    while [ "$secs" -ge 0 ]; do
+      echo -ne "Auto Continuing in $secs seconds...\033[0K\r"
 
-  echo "Rollback complete. Checking for leftovers."
-  echo "this may take up to one minute"
-  grab_dir_state newstate.txt
-  echo "Ready. Click enter to view diff"
-  secs=90
-  while [ "$secs" -ge 0 ]; do
-    echo -ne "Auto Continuing in $secs seconds...\033[0K\r"
+      if read -t 1 -r _; then
+        break
+      fi
 
-    if read -t 1 -r _; then
-      break
-    fi
-
-    ((secs--))
-  done
-  diff --side-by-side --color=always --suppress-common-lines "$HOME/oldstate.txt" "$HOME/newstate.txt"
-  echo "Leftover Check Finished. Examine for any modified files"
+      ((secs--))
+    done
+    diff --side-by-side --color=always --suppress-common-lines "$HOME/oldstate.txt" "$HOME/newstate.txt"
+    echo "Leftover Check Finished. Examine for any modified files"
+  fi
   exit 1
 }
 trap 'perform_rollback' ERR
 trap "" SIGINT SIGTSTP SIGQUIT # can't risk the user exiting the script and messing with things mid through
 # Checks Ends
 # Rollback Functions Start
-undo_closetabs_creation() { sudo mv /etc/systemd/system/closetabs.service "$HOME/CTCT"; }
+undo_closetabs_creation() { sudo mv -f /etc/systemd/system/closetabs.service "$HOME/CTCT"; }
 undo_closetabs_service_enable() { sudo systemctl disable --now closetabs; }
-undo_move_matt_daemon() { sudo mv /etc/matt_damon "$HOME/CTCT"; }
-undo_create_hooks_bin_dir() { sudo mv /etc/pacman.d/hooks.bin /; }
-undo_move_vivaldi_sh() { sudo mv /etc/pacman.d/hooks.bin/vivaldimods.sh "$HOME/CTCT"; }
-undo_create_hooks_dir() { sudo mv /etc/pacman.d/hooks "$HOME/.local/share/Trash/files"; }
-undo_vivaldiupdate_hook() { sudo mv /etc/pacman.d/hooks/vivaldiupdate.hook "$HOME/CTCT"; }
-undo_grub1_hook() { sudo mv /etc/pacman.d/hooks/grub1.hook "$HOME/CTCT"; }
-undo_grub2_hook() { sudo mv /etc/pacman.d/hooks/grub2.hook "$HOME/CTCT"; }
+undo_move_matt_daemon() { sudo mv -f /etc/matt_damon "$HOME/CTCT"; }
+undo_create_hooks_bin_dir() { sudo mv -f /etc/pacman.d/hooks.bin /; }
+undo_move_vivaldi_sh() { sudo mv -f /etc/pacman.d/hooks.bin/vivaldimods.sh "$HOME/CTCT"; }
+undo_create_hooks_dir() { sudo mv -f /etc/pacman.d/hooks "$HOME/.local/share/Trash/files"; }
+undo_vivaldiupdate_hook() { sudo mv -f /etc/pacman.d/hooks/vivaldiupdate.hook "$HOME/CTCT"; }
+undo_grub1_hook() { sudo mv -f /etc/pacman.d/hooks/grub1.hook "$HOME/CTCT"; }
+undo_grub2_hook() { sudo mv -f /etc/pacman.d/hooks/grub2.hook "$HOME/CTCT"; }
 undo_vivaldi_JS_SCRIPTS() {
   cd /opt/vivaldi/resources/vivaldi/
-  sudo mv "${applied_vivaldi_mods[@]}" "$HOME/CTCT/Custom_Vivaldi_JS(AI)"
+  sudo mv -f "${applied_vivaldi_mods[@]}" "$HOME/CTCT/Custom_Vivaldi_JS(AI)"
   cd -
 }
 undo_vivaldimods_sh() {
@@ -150,17 +158,17 @@ reverse_immute() { sudo chattr -i "$1"; }
 binary_to_remove() { sudo sed "/$user ALL=(root) NOPASSWD: /usr/bin/$1/d" /etc/sudoers.d/90-allowed-commands; } # this could fail if the username somehow had a regex special character
 undo_create_trash_dir() { rm -rf "$HOME/.local/share/Trash/files"; }
 undo_move_password_file() { mv "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME"; }
-undo_backup_grub_custom() { sudo mv --force /etc/grub.d/40_custom.bak /etc/grub.d/40_custom; }
-undo_sed_grub_custom() { sudo mv /etc/grub.d/40_custom.bak /etc/grub.d/40_custom; }
+undo_backup_grub_custom() { sudo mv -f /etc/grub.d/40_custom.bak /etc/grub.d/40_custom; }
+undo_sed_grub_custom() { sudo mv -f /etc/grub.d/40_custom.bak /etc/grub.d/40_custom; }
 undo_create_password_file() { mv GRUB_PASSWORD-KEEP_SAFE.txt "$HOME/.local/share/Trash/files/"; }
 undo_append_grub_custom() { sudo sed -i -e '/set superusers=\"linuxconfig\"/d' -e '/password_pbkdf2 linuxconfig/d' /etc/grub.d/40_custom; }
-restore_backup_grub_cfg_bak() { sudo mv "/boot/grub/grub.cfg.bak.${backup_timestamp}" /boot/grub/grub.cfg; }
+restore_backup_grub_cfg_bak() { sudo mv -f "/boot/grub/grub.cfg.bak.${backup_timestamp}" /boot/grub/grub.cfg; }
 undo_unrestrict_grub() { sudo sed -i -e 's/--class os --unrestricted/--class os/g' /etc/grub.d/10_linux; }
 undo_restrict_grub() { sudo sed -i "s/submenu_id_option 'gnulinux-advanced/menuentry_id_option 'gnulinux-advanced/g" /etc/grub.d/10_linux; }
 # undo_create_grub1() { rm grub1.hook; }
 # undo_create_grub2() { rm grub2.hook; }
-undo_create_etc_dir() { sudo mv /etc "$HOME/.local/share/Trash/files/"; } # this only removes etc if you didn't have it before
-undo_create_pacman_d_dir() { sudo mv /etc/pacman.d "$HOME/.local/share/Trash/files/"; }
+undo_create_etc_dir() { sudo mv -f /etc "$HOME/.local/share/Trash/files/"; } # this only removes etc if you didn't have it before
+undo_create_pacman_d_dir() { sudo mv -f /etc/pacman.d "$HOME/.local/share/Trash/files/"; }
 #undo_move_hooks() {
 #    sudo mv /etc/pacman.d/hooks/grub1.hook "$HOME"
 #    sudo mv /etc/pacman.d/hooks/grub2.hook "$HOME"
@@ -181,10 +189,10 @@ undo_create_pacman_d_dir() { sudo mv /etc/pacman.d "$HOME/.local/share/Trash/fil
 # yay: user can create their own dummy package with commands such as `sudo chattr -i ` and submit to AUR and can run those commands
 # pacman: user can download their own script using pacman -U to install a local package, also allowing a way to run commands
 # systemctl start/restart/enable: user can create their own service, with their own Exec line to run any command using systemctl enable and start the service using systemctl start. systemctl restart does the same thing to a newly created service as systemctl enable and systemctl start so we have to stop it for the same reason. We can also block the `mv` command  instead stopping the user from ever creating their own services but the mv command is used more than the systemctl commands
-binaries_to_allow=("curl" "jq" "adb" "bat" "blkid" "cat" "chmod" "docker-compose" "du" "flatpak" "fuser" "grep" "journalctl" "killall" "ln" "mv" "nbfc" "pkill" "rm" "rmpc" "sensors-detect" "sleep" "ss" "tailscale" "tlp" "tlp-stat" "touch" "ufw" "systemctl status" "systemctl is-active" "systemctl list-units" "systemctl list-unit-files" "systemctl show" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *")
+binaries_to_allow=("curl" "jq" "adb" "bat" "blkid" "cat" "chmod" "docker-compose" "du" "flatpak" "fuser" "grep" "journalctl" "killall" "ln" "mv" "nbfc" "pkill" "rm" "rmpc" "sensors-detect" "sleep" "ss" "tailscale" "tlp" "tlp-stat" "touch" "ufw" "systemctl status" "systemctl is-active" "systemctl list-units" "systemctl list-unit-files" "systemctl show" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "ls" "chmod")
 undo_create_root() { echo "It is not safe for this script to undo the root password creation automatically. Check file for the root password to manually change."; }
 undo_create_local_bin_dir() { echo "This folder needs to be here. Not going to undo it"; }
-undo_include_sudoers_d_dir() { sudo mv /etc/sudoers.d/ "$HOME/.local/share/Trash/files/"; }
+undo_include_sudoers_d_dir() { sudo mv -f /etc/sudoers.d/ "$HOME/.local/share/Trash/files/"; }
 undo_install_go() { mv /usr/local/go "$HOME/.local/share/Trash/files/"; }
 undo_curl_go() { mv "$HOME/CTCT/go" "$HOME/.local/share/Trash/files/"; }
 undo_install_tle() { mv "$HOME/go/bin/tle" "$HOME/.local/share/Trash/files/"; }
@@ -198,14 +206,15 @@ apply_vivaldi_mods() {
   sed -i -e "/mods are already indented/d" -e "/Nothing missing/d" -e "/Inserted <script src/d" -e "/Adding missing entries:/d" -e "/Done./d" vivaldimods_output.txt
   sudo awk '{print $2}' vivaldimods_output.txt | sudo tee tmpfile.txt >/dev/null && sudo mv -f tmpfile.txt vivaldimods_output.txt
   readarray <vivaldimods_output.txt new_host_entries
-  mv vivaldimods_output.txt "$HOME/.local/share/Trash/files/"
+  mv -f vivaldimods_output.txt "$HOME/.local/share/Trash/files/"
+  chmod +x /etc/pacman.d/hooks.bin/vivaldimods.sh
 }
 
 correct_flag_helper() { # 189
   if [[ -e "$HOME/.local/share/applications/vivaldi-stable.desktop" ]]; then
-    mv "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/"
-    cp -f vivaldi-stable.desktop "$HOME/.local/share/applications"
+    mv -f "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/"
   fi
+  mv -f "$HOME/CTCT/vivaldi-stable.desktop" "$HOME/.local/share/applications"
   if [[ ! -d $HOME/.local/bin/ ]]; then
     if mkdir -p "$HOME/.local/bin/"; then
       reverse_operation+=("undo_create_local_bin_dir")
@@ -213,7 +222,7 @@ correct_flag_helper() { # 189
       perform_rollback
     fi
   fi
-  mv --force vivaldi-custom "$HOME/.local/bin"
+  mv -f vivaldi-custom "$HOME/.local/bin"
 }
 exit_cleanly() {
   echo $?
@@ -288,8 +297,8 @@ git clone https://github.com/MrSavageBanana/CTCT.git 1>/dev/null || exit
 cd CTCT || exit
 
 # Service
-closetabs_creation() { sudo cp -f closetabs.service /etc/systemd/system; }
-move_matt_daemon() { sudo mv --force matt_damon.sh /etc/; }
+closetabs_creation() { sudo mv -f closetabs.service /etc/systemd/system; }
+move_matt_daemon() { sudo mv -f matt_damon.sh /etc/; }
 closetabs_service_enable() { sudo systemctl enable --now closetabs; }
 service_setup=("closetabs_creation" "move_matt_daemon" "closetabs_service_enable")
 reverse_service_setup=("undo_closetabs_creation" "undo_move_matt_daemon" "undo_closetabs_service_enable")
@@ -317,10 +326,10 @@ if [[ ! -d /etc/pacman.d/hooks ]]; then
   fi
 fi
 
-move_vivaldi_sh() { sudo mv --force vivaldimods.sh /etc/pacman.d/hooks.bin; }
-vivaldiupdate_hook() { sudo mv --force vivaldiupdate.hook /etc/pacman.d/hooks; }
-grub1_hook() { sudo mv --force grub1.hook /etc/pacman.d/hooks; }
-grub2_hook() { sudo mv --force grub2.hook /etc/pacman.d/hooks; }
+move_vivaldi_sh() { sudo mv -f vivaldimods.sh /etc/pacman.d/hooks.bin; }
+vivaldiupdate_hook() { sudo mv -f vivaldiupdate.hook /etc/pacman.d/hooks; }
+grub1_hook() { sudo mv -f grub1.hook /etc/pacman.d/hooks; }
+grub2_hook() { sudo mv -f grub2.hook /etc/pacman.d/hooks; }
 hooks_setup=("move_vivaldi_sh" "vivaldiupdate_hook" "grub1_hook" "grub2_hook")
 reverse_hooks_setup=("undo_move_vivaldi_sh" "undo_vivaldiupdate_hook" "undo_grub1_hook" "undo_grub2_hook")
 for n in {0..3}; do
@@ -329,6 +338,7 @@ for n in {0..3}; do
   fi
 done
 # Javascript
+echo "Installing Vivaldi"
 sudo pacman -S --needed --noconfirm vivaldi
 cd "Custom_Vivaldi_JS(AI)" || exit
 # This array needs to be upgraded by making all files in Custom_Vivaldi_JS be in it, regardless of name
@@ -338,7 +348,7 @@ cd "Custom_Vivaldi_JS(AI)" || exit
 # 3. if they don't have their directory yet, they can run the script with the arguments to the directory to add it in.
 #if sudo mv --force "${JS_SCRIPTS[@]}" /opt/vivaldi/resources/vivaldi; then
 for f in *js; do
-  if sudo mv --force "$f" /opt/vivaldi/resources/vivaldi; then
+  if sudo mv -f "$f" /opt/vivaldi/resources/vivaldi; then
     reverse_operation+=("undo_vivaldi_JS_SCRIPTS")
     applied_vivaldi_mods+=("$f")
   else
@@ -406,6 +416,7 @@ else
 fi
 
 #TODO: Remove Root privileges from the current user. - need to find out what groups the user is part of which has sudo
+# TODO: run sudo -ll and get the file
 
 # GRUB.sh Starts
 
@@ -441,7 +452,7 @@ if {
   echo "KEEP THE FOLLOWING PASSWORD SAFE. You will need the following password to enter into GRUB and system: "
   echo "${chosen_password}"
   echo "Last updated ${current_date}"
-} >>GRUB_PASSWORD-KEEP_SAFE.txt; then # for a period of time until this file is shred, someone could theoretically see what is inside it. Not sure how to stop this.
+} >GRUB_PASSWORD-KEEP_SAFE.txt; then # for a period of time until this file is shred, someone could theoretically see what is inside it. Not sure how to stop this.
   reverse_operation+=("undo_create_password_file")
 else
   perform_rollback
