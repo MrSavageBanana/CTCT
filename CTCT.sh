@@ -292,17 +292,21 @@ for n in {0..2}; do
   fi
 done
 # Hooks
-check_for_hooks_bin() { [[ ! -d /etc/pacman.d/hooks.bin ]]; }
-check_for_hooks() { [[ ! -d /etc/pacman.d/hooks ]]; }
-pacman_hooks_setup=("check_for_hooks_bin" "check_for_hooks")
-undo_pacman_hooks_setup=("undo_create_hooks_bin_dir" "undo_create_hooks_dir")
-for n in {0..1}; do
-  if "${pacman_hooks_setup[$n]}"; then
-    reverse_operation+=("${undo_pacman_hooks_setup[$n]}")
+if [[ ! -d /etc/pacman.d/hooks.bin ]]; then
+  if sudo mkdir -p /etc/pacman.d/hooks.bin; then
+    reverse_operation+=("undo_create_hooks_bin_dir")
   else
     perform_rollback
   fi
-done
+fi
+
+if [[ ! -d /etc/pacman.d/hooks ]]; then
+  if sudo mkdir -p /etc/pacman.d/hooks; then
+    reverse_operation+=("undo_create_hooks_dir")
+  else
+    perform_rollback
+  fi
+fi
 
 move_vivaldi_sh() { sudo mv --force vivaldimods.sh /etc/pacman.d/hooks.bin; }
 vivaldiupdate_hook() { sudo mv --force vivaldiupdate.hook /etc/pacman.d/hooks; }
