@@ -128,9 +128,9 @@ perform_rollback() {
     while [ "$secs" -ge 0 ]; do
       echo -ne "Auto Continuing in $secs seconds...\033[0K\r"
 
-    if read -t 1 -r _; then
-      break
-    fi
+      if read -t 1 -r _; then
+        break
+      fi
 
       ((secs--))
     done
@@ -170,11 +170,11 @@ undo_vivaldi_JS_SCRIPTS() {
   cd -
 }
 undo_vivaldimods_sh() {
-  for JS in "${applied_vivaldi_mods[@]:-}"; do
-    sudo sed "/$JS/d" /opt/vivaldi/resources/vivaldi/window.html
+  for JS in "${applied_vivaldi_mods[@]}"; do
+    [[ -n "$JS" ]] && sudo sed "/$JS/d" /opt/vivaldi/resources/vivaldi/window.html
   done
-  for sites in "${new_host_entries[@]:-}"; do # this can only work if we decide to run the function because the array which has all the newly added websites won't exist
-    sudo sed "/$sites/d" /etc/hosts
+  for sites in "${new_host_entries[@]}"; do # this can only work if we decide to run the function because the array which has all the newly added websites won't exist
+    [[ -n "$sites" ]] && sudo sed "/$sites/d" /etc/hosts
   done
 }
 remove_corrected_vivaldi_entry() { mv "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/CTCT"; }
@@ -226,10 +226,10 @@ undo_tle_lock() { mv "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Tr
 user=$(whoami)
 apply_vivaldi_mods() {
   cd "$HOME/CTCT"
-  if [[ "$restore_state" == "-o xtrace" ]]; then
+  if [[ "$restore_state" == "set -o xtrace" ]]; then
     sudo -x bash /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee vivaldimods_output.txt
   else
-  sudo bash /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee vivaldimods_output.txt
+    sudo bash /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee vivaldimods_output.txt
   fi
   sed -i -e "/mods are already indented/d" -e "/Nothing missing/d" -e "/Inserted <script src/d" -e "/Adding missing entries:/d" -e "/Done./d" vivaldimods_output.txt
   sudo awk '{print $2}' vivaldimods_output.txt | sudo tee tmpfile.txt >/dev/null && sudo mv -f tmpfile.txt vivaldimods_output.txt
@@ -249,7 +249,7 @@ correct_flag_helper() { # 189
       perform_rollback
     fi
   fi
-  mv --force vivaldi-custom "$HOME/.local/bin"
+  mv --force "$HOME/vivaldi-custom" "$HOME/.local/bin"
 }
 exit_cleanly() {
   echo $?
@@ -264,7 +264,7 @@ readonly manual_password="wompwomp"                                             
 readonly rand32charstr=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1) # change it from 32 to another amount of characters if you want to easily be able to jailbreak it.
 # TODO: replace the "tr" command with an "awk" command instead.
 readonly chosen_password="$manual_password"
-if [[ "$restore_state" == "-o xtrace" ]]; then
+if [[ "$restore_state" == "set -o xtrace" ]]; then
   set -x
 fi
 grub_password=$(printf '%s\n%s\n' "$chosen_password" "$chosen_password" |
@@ -501,7 +501,7 @@ else
   perform_rollback
 fi
 
-if [[ "$restore_state" == "-o xtrace" ]]; then
+if [[ "$restore_state" == "set -o xtrace" ]]; then
   set -x
 fi
 
@@ -545,7 +545,7 @@ fi
 # setting up hooks to make this persistent
 if [[ ! -d /etc/ ]]; then
   if sudo mkdir -p /etc; then
-echo "etc directory wasn't detected so it was created. This will not be reversed in perform_rollback"
+    echo "etc directory wasn't detected so it was created. This will not be reversed in perform_rollback"
     reverse_operation+=("undo_create_etc_dir")
   else
     perform_rollback
@@ -642,7 +642,7 @@ else
   perform_rollback
 fi
 
-if [[ "$restore_state" == "-o xtrace" ]]; then
+if [[ "$restore_state" == "set -o xtrace" ]]; then
   set -x
 fi
 
