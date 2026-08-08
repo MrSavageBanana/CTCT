@@ -105,7 +105,8 @@ grab_dir_state() {
 export LC_ALL=C
 declare -a reverse_operation=()
 perform_rollback() {
-  echo_red -e "\n[!] ERROR DETECTED. INITIATING ROLLBACK..."
+  trap - ERR # stops running perform_rollback if perform_rollback fails.
+  echo_red "\n[!] ERROR DETECTED. INITIATING ROLLBACK..."
 
   # Get the total number of items in the stack
   total_items=${#reverse_operation[@]}
@@ -166,7 +167,9 @@ undo_grub1_hook() { sudo mv -f /etc/pacman.d/hooks/grub1.hook "$HOME/CTCT"; }
 undo_grub2_hook() { sudo mv -f /etc/pacman.d/hooks/grub2.hook "$HOME/CTCT"; }
 undo_vivaldi_JS_SCRIPTS() {
   cd /opt/vivaldi/resources/vivaldi/
-  sudo mv -f "${applied_vivaldi_mods[@]}" "$HOME/CTCT/Custom_Vivaldi_JS(AI)"
+  if [[ "${#applied_vivaldi_mods[@]}" -gt 0 ]]; then
+    sudo mv -f "${applied_vivaldi_mods[@]}" "$HOME/CTCT/Custom_Vivaldi_JS(AI)"
+  fi
   cd -
 }
 undo_vivaldimods_sh() {
@@ -179,7 +182,7 @@ undo_vivaldimods_sh() {
 }
 remove_corrected_vivaldi_entry() { mv "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/CTCT"; }
 reverse_immute() { sudo chattr -i "$1"; }
-binary_to_remove() { sudo sed "/$user ALL=(root) NOPASSWD: /usr/bin/$1/d" /etc/sudoers.d/90-allowed-commands; } # this could fail if the username somehow had a regex special character
+binary_to_remove() { sudo sed -i "/$user ALL=(root) NOPASSWD: /usr/bin/$1/d" /etc/sudoers.d/90-allowed-commands; } # this could fail if the username somehow had a regex special character
 undo_create_trash_dir() { rm -rf "$HOME/.local/share/Trash/files"; }
 undo_move_password_file() { mv "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME"; }
 undo_backup_grub_custom() { sudo mv -f /etc/grub.d/40_custom.bak /etc/grub.d/40_custom; }
@@ -227,7 +230,7 @@ user=$(whoami)
 apply_vivaldi_mods() {
   cd "$HOME/CTCT"
   if [[ "$restore_state" == "set -o xtrace" ]]; then
-    sudo -x bash /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee vivaldimods_output.txt
+    sudo bash -x /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee vivaldimods_output.txt
   else
     sudo bash /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee vivaldimods_output.txt
   fi
@@ -371,9 +374,9 @@ cd "Custom_Vivaldi_JS(AI)" || exit
 # 2. if the user has their own custom, they should be required to put the path to the directory
 # 3. if they don't have their directory yet, they can run the script with the arguments to the directory to add it in.
 #if sudo mv --force "${JS_SCRIPTS[@]}" /opt/vivaldi/resources/vivaldi; then
+reverse_operation+=("undo_vivaldi_JS_SCRIPTS")
 for f in *js; do
   if sudo mv -f "$f" /opt/vivaldi/resources/vivaldi; then
-    reverse_operation+=("undo_vivaldi_JS_SCRIPTS")
     applied_vivaldi_mods+=("$f")
   else
     perform_rollback
