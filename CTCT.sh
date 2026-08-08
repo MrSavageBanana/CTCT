@@ -5,7 +5,7 @@
 # Checks starts
 # I am contemplating whether to add a check for existing files that might be on the user's computer and to check for them and tell the user to deal with them or if they want them to be overwritten and what would be overwritten. So far in the script, these are the files and directories that will be overwritten if they already exist
 
-# exit         # in case this is accidentally ran. I don't want to ruin my computer. Remove this when needed and the shellcheck lines above
+exit         # in case this is accidentally ran. I don't want to ruin my computer. Remove this when needed and the shellcheck lines above
 echo_red() { # for things that needs the users attention
   builtin echo -e "\033[38;2;255;0;0m >>> $* <<< \033[0m"
 }
@@ -171,10 +171,10 @@ undo_vivaldi_JS_SCRIPTS() {
 }
 undo_vivaldimods_sh() {
   for JS in "${applied_vivaldi_mods[@]}"; do
-    [[ -n "$JS" ]] && sudo sed "/$JS/d" /opt/vivaldi/resources/vivaldi/window.html
+    [[ -n "$JS" ]] && sudo sed -i "/$JS/d" /opt/vivaldi/resources/vivaldi/window.html
   done
   for sites in "${new_host_entries[@]}"; do # this can only work if we decide to run the function because the array which has all the newly added websites won't exist
-    [[ -n "$sites" ]] && sudo sed "/$sites/d" /etc/hosts
+    [[ -n "$sites" ]] && sudo sed -i "/$sites/d" /etc/hosts
   done
 }
 remove_corrected_vivaldi_entry() { mv "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/CTCT"; }
@@ -249,7 +249,7 @@ correct_flag_helper() { # 189
       perform_rollback
     fi
   fi
-  mv --force "$HOME/vivaldi-custom" "$HOME/.local/bin"
+  mv --force "$HOME/CTCT/vivaldi-custom" "$HOME/.local/bin"
 }
 exit_cleanly() {
   echo $?
