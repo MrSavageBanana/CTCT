@@ -5,7 +5,7 @@
 # Checks starts
 # I am contemplating whether to add a check for existing files that might be on the user's computer and to check for them and tell the user to deal with them or if they want them to be overwritten and what would be overwritten. So far in the script, these are the files and directories that will be overwritten if they already exist
 
-exit         # in case this is accidentally ran. I don't want to ruin my computer. Remove this when needed and the shellcheck lines above
+# exit         # in case this is accidentally ran. I don't want to ruin my computer. Remove this when needed and the shellcheck lines above
 echo_red() { # for things that needs the users attention
   builtin echo -e "\033[38;2;255;0;0m >>> $* <<< \033[0m"
 }
@@ -92,6 +92,16 @@ elif [[ ! -d $HOME/CTCT ]]; then
   echo "No directories will be overwritten"
 fi
 
+grab_dir_state() {
+  local state_name="$1"
+  for d in "${affected_dirs[@]}"; do
+    if [[ -e $d ]]; then
+      echo "$d"
+      sudo find "$d" -maxdepth 1 -type f -exec md5sum {} + | sort >>"$HOME/$state_name"
+    fi
+  done
+  echo "Finished capturing filesystem state"
+}
 export LC_ALL=C
 declare -a reverse_operation=()
 perform_rollback() {
@@ -110,29 +120,29 @@ perform_rollback() {
   done
 
   if [[ -e "$HOME/oldstate.txt" ]]; then
-  echo "Rollback complete. Checking for leftovers."
-  echo_yellow "this may take up to one minute"
-  grab_dir_state newstate.txt
-  echo "Ready. Click enter to view diff"
-  secs=90
-  while [ "$secs" -ge 0 ]; do
-    echo -ne "Auto Continuing in $secs seconds...\033[0K\r"
-fi
+    echo "Rollback complete. Checking for leftovers."
+    echo "this may take up to one minute"
+    grab_dir_state newstate.txt
+    echo "Ready. Click enter to view diff"
+    secs=90
+    while [ "$secs" -ge 0 ]; do
+      echo -ne "Auto Continuing in $secs seconds...\033[0K\r"
 
     if read -t 1 -r _; then
       break
     fi
 
-    ((secs--))
-  done
-  # diff --side-by-side --color=always --suppress-common-lines "$HOME/oldstate.txt" "$HOME/newstate.txt"
-  mid=$((COLUMNS / 2))
-  string_length_of_oldstate=12
-  pad=$((mid - string_length_of_oldstate))
-  spacer=""
-  for ((i = 0; i < pad; i++)); do
-    spacer+=" "
-  done
+      ((secs--))
+    done
+    # diff --side-by-side --color=always --suppress-common-lines "$HOME/oldstate.txt" "$HOME/newstate.txt"
+    mid=$((COLUMNS / 2))
+    string_length_of_oldstate=12
+    pad=$((mid - string_length_of_oldstate))
+    spacer=""
+    for ((i = 0; i < pad; i++)); do
+      spacer+=" "
+    done
+  fi
 
   echo -e "oldstate.txt${spacer}newstate.txt\n"
 
@@ -216,7 +226,11 @@ undo_tle_lock() { mv "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Tr
 user=$(whoami)
 apply_vivaldi_mods() {
   cd "$HOME/CTCT"
+  if [[ "$restore_state" == "-o xtrace" ]]; then
+    sudo -x bash /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee vivaldimods_output.txt
+  else
   sudo bash /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee vivaldimods_output.txt
+  fi
   sed -i -e "/mods are already indented/d" -e "/Nothing missing/d" -e "/Inserted <script src/d" -e "/Adding missing entries:/d" -e "/Done./d" vivaldimods_output.txt
   sudo awk '{print $2}' vivaldimods_output.txt | sudo tee tmpfile.txt >/dev/null && sudo mv -f tmpfile.txt vivaldimods_output.txt
   readarray <vivaldimods_output.txt new_host_entries
@@ -244,7 +258,7 @@ exit_cleanly() {
 important_files=('/etc/hosts' '/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pacman.d/hooks/grub1.hook' '/etc/pacman.d/hooks/grub2.hook' '/etc/pacman.d/hooks.bin/vivaldimods.sh' '/etc/systemd/system/closetabs.service' '/etc/matt_damon.sh' '/etc/sudoers' '/etc/sudoers.d' "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock")
 backup_timestamp=$(date '+%Y-%m-%dT%H-%M-%S')
 readonly backup_timestamp
-restore_state=$(set +o | grep -F '\-o xtrace') # this checks if the script was run with bash -x so after it hides the passwords, it shows the output of -x
+restore_state=$(set +o | grep -F -- '-o xtrace') # this checks if the script was run with bash -x so after it hides the passwords, it shows the output of -x
 set +x
 readonly manual_password="wompwomp"                                                      # manual_password is for debugging/developing only
 readonly rand32charstr=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1) # change it from 32 to another amount of characters if you want to easily be able to jailbreak it.
@@ -276,16 +290,6 @@ affected_dirs=(
   "/boot/grub/"
   "/usr/local"
 )
-grab_dir_state() {
-  local state_name="$1"
-  for d in "${affected_dirs[@]}"; do
-    if [[ -e $d ]]; then
-      echo "$d"
-      sudo find "$d" -maxdepth 1 -type f -exec md5sum {} + | sort >>"$HOME/$state_name"
-    fi
-  done
-  echo "Finished capturing filesystem state"
-}
 set +eEuo pipefail # turns off pipefail now that the script didn't fail to create the variables
 # References End
 set -eEu
@@ -317,7 +321,10 @@ cd CTCT || exit
 # Service
 closetabs_creation() { sudo mv -f closetabs.service /etc/systemd/system; }
 move_matt_daemon() { sudo mv -f matt_damon.sh /etc/; }
-closetabs_service_enable() { sudo systemctl enable --now closetabs; }
+closetabs_service_enable() {
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now closetabs
+}
 service_setup=("closetabs_creation" "move_matt_daemon" "closetabs_service_enable")
 reverse_service_setup=("undo_closetabs_creation" "undo_move_matt_daemon" "undo_closetabs_service_enable")
 for n in {0..2}; do
