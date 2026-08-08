@@ -90,7 +90,7 @@ custom_websites=(
 )
 # Lines marked with < are in mirror but not in current
 for custom_websites_to_block in "${custom_websites[@]}"; do
-  if ! grep -qF "$custom_websites_to_block"; then
+  if ! grep -qF "$custom_websites_to_block" /etc/hosts; then
     mirror="$mirror"$'\n'"$custom_websites_to_block" # gemini told me this is how to make each result on a new line
   fi
 done
