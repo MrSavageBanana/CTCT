@@ -17,29 +17,51 @@
 # This works for all browsers which display their browser status in a .desktop file
 # The working script as a function we can call
 # created with Claude. Account: Burhan Ra'if Kouri
-closetabs2() {
-  blocked_domains=()
-  while IFS= read -r d; do
-    blocked_domains+=("$d")
-  done < <(awk '!/#/ && /0.0.0.0/ { count++; if (count >= 2) print $2 }' /etc/hosts)
+check_dependencies() {
+  # just the dependencies that vivaldimods and matt_damon rely on.
+  local deps=("awk" "basename" "bash" "chattr" "curl" "diff" "echo" "file" "grep" "kil" "mapfile" "pgrep" "readarray" "rm" "sed" "strace" "sudo" "systemctl" "tee" "uniq" "xargs")
+  for dep in "${deps[@]}"; do
+    if ! command -v "$dep" >/dev/null 2>&1; then
+      missing_dependencies+=("$dep")
+    fi
+  done
+  if [[ "${#missing_dependencies[@]}" -eq 0 ]]; then
+    echo "No Dependencies Missing"
+  elif [[ "${#missing_dependencies[@]}" -ne 0 ]]; then
+    echo_red "${#missing_dependencies[@]}" 'missing dependencies!:'
+    for missing_dependency in "${missing_dependencies[@]}"; do
+      sudo pacman -S --needed --noconfirm "$missing_dependency" # has to attempt to install missing dependencies.
+    done
+  else
+    echo_red "missing_dependencies array is not working. Array:"
+    "${missing_dependencies[@]}"
+    exit
+  fi
 
+}
+closetabs2() {
   domains=()
   ids=()
+
   while IFS=$'\t' read -r domain id; do
     domains+=("$domain")
     ids+=("$id")
-  done < <(curl -s http://localhost:9222/json/list | awk -F'"' '
+  done < <(curl -s http://localhost:9222/json/list | awk -f'"' '
     /"id":/ { id = $4 }
-    /"url": "https:\/\// { split($4, a, "/"); print a[3] "\t" id }
+    /"url": "https?:\/\// { split($4, a, "/"); print a[3] "\t" id } 
     ')
-
   for i in "${!domains[@]}"; do
-    for blockdom in "${blocked_domains[@]}"; do
-      if [[ "${domains[$i]}" == "$blockdom" ]]; then
-        curl -s "http://localhost:9222/json/close/${ids[$i]}" >/dev/null
-        break
-      fi
-    done
+    if awk '!/#/ && /0.0.0.0/ {print $2}' /etc/hosts | grep -qFx "${domains[$i]}"; then
+      curl -s "http://localhost:9222/json/close/${ids[$i]}" >/dev/null
+    else
+      # if the user has many links from the same domain but they aren't in the /etc/hosts, just remove all of them.
+      for dom in "${domains[@]}"; do
+        if [[ "$dom" == "${domains[$i]}" ]]; then
+          unset "domains[$i]"
+          unset "ids[$i]"
+        fi
+      done
+    fi
   done
 }
 
@@ -86,7 +108,7 @@ load_browsers() {
   mapfile -t browsers < <(read_desktop_files)
   for b in "${browsers[@]}"; do
     b2=$(command -v "$b")
-    b3=$(file --mime-type -b "$b2" | awk '{split($NF, a, "/"); print a[1]}')
+    b3=$(file --mime-type -bL "$b2" | awk '{split($NF, a, "/"); print a[1]}')
     if [[ $b3 = 'text' ]]; then
       # b4=$(strace -e trace=execve "$b2" --version |& awk -F "\"" '/^execve/ && /0$/ {print $2}' | awk -F "/" '{print $NF}' | tail -n 1) # same as below but less pipes. Used AI to make the single awk command below
       b4=$(strace -e trace=execve "$b2" --version |& awk -F'"' '/^execve/ && /0$/ { n = split($2, arr, "/"); result = arr[n] } END { if (result) print result }')
@@ -99,13 +121,17 @@ load_browsers() {
     fi
   done
 }
-if [[ ! -e /etc/browsers.txt ]]; then
-  load_browsers
-elif [[ -e /etc/browsers.txt ]]; then
-  if [[ "${#browsers[@]}" -eq 0 ]]; then
+i=0
+while [[ $i -lt 2 ]]; do
+  if [[ ! -e /etc/browsers.txt ]]; then
     load_browsers
+  elif [[ -e /etc/browsers.txt ]]; then
+    if [[ "${#browsers[@]}" -eq 0 ]]; then
+      load_browsers
+    fi
   fi
-fi
-for browser in "${browsers[@]}"; do
-  check_browser "$browser"
+  for browser in "${browsers[@]}"; do
+    check_browser "$browser"
+  done
+  ((i++))
 done
