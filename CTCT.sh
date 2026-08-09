@@ -1,4 +1,6 @@
 #!/bin/bash
+# shellcheck disable=SC2034
+# For disabling the messages when the exit message is there:
 # shellcheck disable=SC2317
 # shellcheck disable=SC2329
 # contemplating whether to create different script files and source them. This script is getting messy.
@@ -34,6 +36,7 @@ declare -a service_setup=()
 declare -a reverse_service_setup=()
 declare -a hooks_setup=()
 declare -a reverse_hooks_setup=()
+user=$(whoami)
 # TODO: Attempt to fix the missing dependencies. DEPENDS ON: Auto Detect the system's package manager and use it instead of just pacman. At least Debian and Fedora
 check_dependencies() {
   local deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" "awk" "dialog" "git" "grep" "curl" "chpasswd" "chattr" "systemctl" "grep" "tar" "diff" "find" "md5sum" "sort" "bash" "tr" "fold" "head" "shred" "whoami" "pacman" "basename" "pgrep" "kill" "xargs" "uniq" "file" "strace")
@@ -59,7 +62,7 @@ check_dependencies() {
 }
 check_dependencies
 # we are unable to warn the users about the JS files that may be overwritten unless we ping the github repo (which we will already do when we clone) to check what files might be overwritten
-potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/matt_damon.sh" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock")
+potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/systemd/system/multi-user.target.wants/closetabs.service" "/etc/matt_damon.sh" "/etc/browsers.txt" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "/etc/sudoers.d/90-allowed-commands")
 for file in "${potentially_overwritten_files[@]}"; do
   if [[ -e "$file" ]]; then
     overwritten_files+=("$file")
@@ -97,7 +100,7 @@ grab_dir_state() {
   for d in "${affected_dirs[@]}"; do
     if [[ -e $d ]]; then
       echo "$d"
-      sudo find "$d" -maxdepth 1 -type f -exec md5sum {} + | sort >>"$HOME/$state_name"
+      sudo find "$d" -maxdepth 1 -type f -exec md5sum {} + | sort >"$HOME/$state_name" || exit # if sudo doesn't work. Exit
     fi
   done
   echo "Finished capturing filesystem state"
@@ -120,7 +123,7 @@ perform_rollback() {
     $current_undo_command
   done
 
-  if [[ -e "$HOME/oldstate.txt" ]]; then
+  if [[ -e "$HOME/oldstate.txt" && -e "$HOME/newstate.txt" ]]; then
     echo "Rollback complete. Checking for leftovers."
     echo "this may take up to one minute"
     grab_dir_state newstate.txt
@@ -143,23 +146,23 @@ perform_rollback() {
     for ((i = 0; i < pad; i++)); do
       spacer+=" "
     done
+    echo -e "oldstate.txt${spacer}newstate.txt\n"
+
+    # This should bypass all terminal theming.
+    diff --side-by-side --width="$COLUMNS" --color=always --palette='de=38;2;255;0;0:ad=38;2;0;255;0:hd=1;38;2;255;255;255:ln=38;2;128;128;128' --suppress-common-lines "$HOME/oldstate.txt" "$HOME/newstate.txt"
+    echo "Leftover Check Finished. Examine for any modified files"
   fi
-
-  echo -e "oldstate.txt${spacer}newstate.txt\n"
-
-  # This should bypass all terminal theming.
-  diff --side-by-side --width="$COLUMNS" --color=always --palette='de=38;2;255;0;0:ad=38;2;0;255;0:hd=1;38;2;255;255;255:ln=38;2;128;128;128' --suppress-common-lines "$HOME/oldstate.txt" "$HOME/newstate.txt"
-  echo "Leftover Check Finished. Examine for any modified files"
   exit 1
+
 }
 trap 'perform_rollback' ERR
 trap "" SIGINT SIGTSTP SIGQUIT # can't risk the user exiting the script and messing with things mid through
 # Checks Ends
 # Rollback Functions Start
 undo_closetabs_creation() { sudo mv -f /etc/systemd/system/closetabs.service "$HOME/CTCT"; }
-undo_closetabs_service_enable() { sudo systemctl disable --now closetabs; }
-undo_move_matt_daemon() { sudo mv -f /etc/matt_damon "$HOME/CTCT"; }
-undo_create_hooks_bin_dir() { sudo mv -f /etc/pacman.d/hooks.bin /; }
+undo_closetabs_service_enable() { sudo systemctl disable --now closetabs >/dev/null; }
+undo_move_matt_daemon() { sudo mv -f /etc/matt_damon.sh "$HOME/CTCT"; }
+undo_create_hooks_bin_dir() { sudo mv -f /etc/pacman.d/hooks.bin "$HOME/.local/share/Trash/files/"; }
 undo_move_vivaldi_sh() { sudo mv -f /etc/pacman.d/hooks.bin/vivaldimods.sh "$HOME/CTCT"; }
 undo_create_hooks_dir() { sudo mv -f /etc/pacman.d/hooks "$HOME/.local/share/Trash/files"; }
 undo_vivaldiupdate_hook() { sudo mv -f /etc/pacman.d/hooks/vivaldiupdate.hook "$HOME/CTCT"; }
@@ -182,7 +185,7 @@ undo_vivaldimods_sh() {
 }
 remove_corrected_vivaldi_entry() { mv "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/CTCT"; }
 reverse_immute() { sudo chattr -i "$1"; }
-binary_to_remove() { sudo sed -i "/$user ALL=(root) NOPASSWD: /usr/bin/$1/d" /etc/sudoers.d/90-allowed-commands; } # this could fail if the username somehow had a regex special character
+binary_to_remove() { sudo sed -i "/$user ALL=(root) NOPASSWD: \/usr\/bin\/$1/d" /etc/sudoers.d/90-allowed-commands; } # this could fail if the username somehow had a regex special character
 undo_create_trash_dir() { rm -rf "$HOME/.local/share/Trash/files"; }
 undo_move_password_file() { mv "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME"; }
 undo_backup_grub_custom() { sudo mv -f /etc/grub.d/40_custom.bak /etc/grub.d/40_custom; }
@@ -216,7 +219,7 @@ undo_create_pacman_d_dir() { sudo mv -f /etc/pacman.d "$HOME/.local/share/Trash/
 # yay: user can create their own dummy package with commands such as `sudo chattr -i ` and submit to AUR and can run those commands
 # pacman: user can download their own script using pacman -U to install a local package, also allowing a way to run commands
 # systemctl start/restart/enable: user can create their own service, with their own Exec line to run any command using systemctl enable and start the service using systemctl start. systemctl restart does the same thing to a newly created service as systemctl enable and systemctl start so we have to stop it for the same reason. We can also block the `mv` command  instead stopping the user from ever creating their own services but the mv command is used more than the systemctl commands
-binaries_to_allow=("curl" "jq" "adb" "bat" "blkid" "cat" "chmod" "docker-compose" "du" "flatpak" "fuser" "grep" "journalctl" "killall" "ln" "mv" "nbfc" "pkill" "rm" "rmpc" "sensors-detect" "sleep" "ss" "tailscale" "tlp" "tlp-stat" "touch" "ufw" "systemctl status" "systemctl is-active" "systemctl list-units" "systemctl list-unit-files" "systemctl show" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *")
+binaries_to_allow=("curl *" "jq *" "adb *" "bat *" "blkid *" "cat *" "chmod *" "docker-compose *" "du *" "flatpak *" "fuser *" "grep *" "journalctl *" "killall *" "ln *" "mv *" "nbfc *" "pkill *" "rm *" "rmpc *" "sensors-detect *" "sleep *" "ss *" "tailscale *" "tlp *" "tlp-stat *" "touch *" "ufw *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "visudo --check" "sed -i '/@includedir/{/@includedir \/etc\/sudoers\.d/!d;}' /etc/sudoers" "sudo chattr +i /etc/sudoers" "sudo chattr +i /etc/sudoers.d")
 undo_create_root() { echo_red "It is not safe for this script to undo the root password creation automatically. Check file for the root password to manually change."; }
 undo_create_local_bin_dir() { echo_red "This folder needs to be here. Not going to undo it"; }
 undo_include_sudoers_d_dir() { sudo mv -f /etc/sudoers.d/ "$HOME/.local/share/Trash/files/"; }
@@ -224,24 +227,33 @@ undo_install_go() { mv /usr/local/go "$HOME/.local/share/Trash/files/"; }
 undo_curl_go() { mv "$HOME/CTCT/go" "$HOME/.local/share/Trash/files/"; }
 undo_install_tle() { mv "$HOME/go/bin/tle" "$HOME/.local/share/Trash/files/"; }
 undo_tle_lock() { mv "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Trash/files/"; }
+undo_chmod_90-allowed-commands() { sudo chmod 0644 /etc/sudoers.d/90-allowed-commands; }
+reverse_trash_non_90-allowed-commands-files() {
+  local "$1"=file
+  local file
+  file=$(echo "$1" | awk -F "/" '{print $NF}')
+  sudo mv ~/.local/share/Trash/files/"$file" /etc/sudoers.d/
+}
 # Rollback Functions End
 # References Begin
-user=$(whoami)
 apply_vivaldi_mods() {
+  set -o pipefail # if anything in this function, fails, this will catch it
   cd "$HOME/CTCT"
   if [[ "$restore_state" == "set -o xtrace" ]]; then
-    sudo bash -x /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee vivaldimods_output.txt
+    sudo bash -x /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee vivaldimods_output.txt || exit
   else
-    sudo bash /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee vivaldimods_output.txt
+    sudo bash /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee vivaldimods_output.txt || exit
   fi
   sed -i -e "/mods are already indented/d" -e "/Nothing missing/d" -e "/Inserted <script src/d" -e "/Adding missing entries:/d" -e "/Done./d" vivaldimods_output.txt
-  sudo awk '{print $2}' vivaldimods_output.txt | sudo tee tmpfile.txt >/dev/null && sudo mv -f tmpfile.txt vivaldimods_output.txt
+  sudo awk '{print $2}' vivaldimods_output.txt | sudo tee tmpfile.txt >/dev/null && sudo mv -f tmpfile.txt vivaldimods_output.txt || exit
   readarray <vivaldimods_output.txt new_host_entries
   mv -f vivaldimods_output.txt "$HOME/.local/share/Trash/files/"
   chmod +x /etc/pacman.d/hooks.bin/vivaldimods.sh
+  set +o pipefail
 }
 
 correct_flag_helper() { # 189
+  set -o pipefail
   if [[ -e "$HOME/.local/share/applications/vivaldi-stable.desktop" ]]; then
     mv -f "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/"
   fi
@@ -253,18 +265,21 @@ correct_flag_helper() { # 189
     fi
   fi
   mv --force "$HOME/CTCT/vivaldi-custom" "$HOME/.local/bin"
+  set +o pipefail
 }
 exit_cleanly() {
   echo $?
   exit
 }
 important_files=('/etc/hosts' '/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pacman.d/hooks/grub1.hook' '/etc/pacman.d/hooks/grub2.hook' '/etc/pacman.d/hooks.bin/vivaldimods.sh' '/etc/systemd/system/closetabs.service' '/etc/matt_damon.sh' '/etc/sudoers' '/etc/sudoers.d' "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock")
+important_files2=('/etc/sudoers' '/etc/sudoers.d')
 backup_timestamp=$(date '+%Y-%m-%dT%H-%M-%S')
 readonly backup_timestamp
-restore_state=$(set +o | grep -F -- '-o xtrace') # this checks if the script was run with bash -x so after it hides the passwords, it shows the output of -x
+restore_state=$(set +o | grep -F -- '-o xtrace' || true) # this checks if the script was run with bash -x so after it hides the passwords, it shows the output of -x
 set +x
-readonly manual_password="wompwomp"                                                      # manual_password is for debugging/developing only
-readonly rand32charstr=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1) # change it from 32 to another amount of characters if you want to easily be able to jailbreak it.
+readonly manual_password="wompwomp" # manual_password is for debugging/developing only
+readonly rand32charstr
+rand32charstr=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1) # change it from 32 to another amount of characters if you want to easily be able to jailbreak it.
 # TODO: replace the "tr" command with an "awk" command instead.
 readonly chosen_password="$manual_password"
 if [[ "$restore_state" == "set -o xtrace" ]]; then
@@ -293,7 +308,6 @@ affected_dirs=(
   "/boot/grub/"
   "/usr/local"
 )
-set +eEuo pipefail # turns off pipefail now that the script didn't fail to create the variables
 # References End
 set -eEu
 # Start of script
@@ -322,11 +336,11 @@ git clone https://github.com/MrSavageBanana/CTCT.git 1>/dev/null || exit
 cd CTCT || exit
 
 # Service
-closetabs_creation() { sudo mv -f closetabs.service /etc/systemd/system; }
-move_matt_daemon() { sudo mv -f matt_damon.sh /etc/; }
+closetabs_creation() { sudo mv -f closetabs.service /etc/systemd/system || exit; }
+move_matt_daemon() { sudo mv -f matt_damon.sh /etc/ || exit; }
 closetabs_service_enable() {
-  sudo systemctl daemon-reload
-  sudo systemctl enable --now closetabs
+  sudo systemctl daemon-reload || exit
+  sudo systemctl enable --now closetabs || exit
 }
 service_setup=("closetabs_creation" "move_matt_daemon" "closetabs_service_enable")
 reverse_service_setup=("undo_closetabs_creation" "undo_move_matt_daemon" "undo_closetabs_service_enable")
@@ -354,15 +368,17 @@ if [[ ! -d /etc/pacman.d/hooks ]]; then
   fi
 fi
 
-move_vivaldi_sh() { sudo mv -f vivaldimods.sh /etc/pacman.d/hooks.bin; }
-vivaldiupdate_hook() { sudo mv -f vivaldiupdate.hook /etc/pacman.d/hooks; }
-grub1_hook() { sudo mv -f grub1.hook /etc/pacman.d/hooks; }
-grub2_hook() { sudo mv -f grub2.hook /etc/pacman.d/hooks; }
+move_vivaldi_sh() { sudo mv -f vivaldimods.sh /etc/pacman.d/hooks.bin || exit; }
+vivaldiupdate_hook() { sudo mv -f vivaldiupdate.hook /etc/pacman.d/hooks || exit; }
+grub1_hook() { sudo mv -f grub1.hook /etc/pacman.d/hooks || exit; }
+grub2_hook() { sudo mv -f grub2.hook /etc/pacman.d/hooks || exit; }
 hooks_setup=("move_vivaldi_sh" "vivaldiupdate_hook" "grub1_hook" "grub2_hook")
 reverse_hooks_setup=("undo_move_vivaldi_sh" "undo_vivaldiupdate_hook" "undo_grub1_hook" "undo_grub2_hook")
 for n in {0..3}; do
   if "${hooks_setup[$n]}"; then
     reverse_operation+=("${reverse_hooks_setup[$n]}")
+  else
+    perform_rollback
   fi
 done
 # Javascript
@@ -399,69 +415,28 @@ fi
 
 # since the vivaldimods.sh was just run, the user likely has an internet connection at this point and it is safer to install go and tle right now
 if [[ ! -e /usr/local/go ]]; then
-  echo "Downloading go zip"
-  curl -s https://dl.google.com/go/go1.26.5.linux-amd64.tar.gz --output "$HOME/CTCT/go.tar.gz"
-  reverse_operation+=("undo_curl_go")
-  sudo tar -C /usr/local/ -xzf go.tar.gz
-  reverse_operation+=("undo_install_go")
-else
-  perform_rollback
+  if curl -s https://dl.google.com/go/go1.26.5.linux-amd64.tar.gz --output "$HOME/CTCT/go.tar.gz"; then
+    reverse_operation+=("undo_curl_go")
+  else
+    perform_rollback
+  fi
+
+  if sudo tar -C /usr/local/ -xzf go.tar.gz; then
+    reverse_operation+=("undo_install_go")
+  else
+    perform_rollback
+  fi
 fi
+
 if [[ -e /usr/local/go ]]; then
   /usr/local/go/bin/go install github.com/drand/tlock/cmd/tle@latest
   reverse_operation+=("undo_install_tle")
 else
   echo "go wasn't installed"
   perform_rollback
-  exit
 fi
 if ! up_to_date_info=$(curl -sf https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/info); then
   drand_failed=true
-fi
-
-# Edit /etc/sudoers
-# I will likely allow the users to change what is given the sudo privileges but the script will check for what is absolutely not allowed to be given sudo privileges for this stuff to work. This is maybe a feature for another time.
-
-for binaries in "${binaries_to_allow[@]}"; do
-  if ! grep -qF "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" /etc/sudoers.d/90-allowed-commands; then
-    echo "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" | sudo tee --append /etc/sudoers.d/90-allowed-commands || exit_cleanly
-    reverse_operation+=("binary_to_remove $binaries")
-  elif grep -qF "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" /etc/sudoers.d/90-allowed-commands; then
-    echo "$binaries" already exists
-  else
-    perform_rollback
-  fi
-done
-
-if ! sudo visudo --check >/dev/null; then
-  perform_rollback
-fi
-
-if grep -qF "@includedir" /etc/sudoers; then
-  sudo sed -ie "/@includedir/d" /etc/sudoers
-  if ! grep -qF "@includedir /etc/sudoers.d" /etc/sudoers; then
-    echo "@includedir /etc/sudoers.d" | sudo tee --append /etc/sudoers || exit_cleanly
-    reverse_operation+=("undo_include_sudoers_d_dir")
-  else
-    perform_rollback
-  fi
-fi
-
-if ! sudo visudo --check >/dev/null; then
-  perform_rollback
-fi
-
-#TODO: Remove Root privileges from the current user. - need to find out what groups the user is part of which has sudo
-#IDEA: create our own brand new /etc/sudoers so we don't assume anything about the users
-readarray <(sudo -ll | awk -F ": " '/^Sudoers entry: / {print $2}') -d "\n" FILES_IN_SUDOERS_DIR
-for file in "${FILES_IN_SUDOERS_DIR[@]}"; do
-  if [ ! "$file" == /etc/sudoers.d/90-allowed-commands ]; then
-    sudo mv "$file" ~/.local/share/Trash/files/
-  fi
-done
-
-if ! sudo visudo --check >/dev/null; then
-  perform_rollback
 fi
 
 # GRUB.sh Starts
@@ -510,7 +485,7 @@ fi
 
 set -eEuo pipefail
 # This deletes both the password_pbkdf2 and the superusers line at once
-sudo sed -i '/linuxconfig/d' /etc/grub.d/40_custom
+sudo sed -i '/linuxconfig/d' /etc/grub.d/40_custom || exit
 if {
   echo "set superusers=\"linuxconfig\""
   echo "password_pbkdf2 linuxconfig ${proper_format_grub_password}"
@@ -536,7 +511,8 @@ fi
 
 # Same as running sudo update-grub
 set -e
-sudo cp /boot/grub/grub.cfg "/boot/grub/grub.cfg.bak.${backup_timestamp}"
+sudo cp /boot/grub/grub.cfg "/boot/grub/grub.cfg.bak.${backup_timestamp}" || exit
+set +e
 
 if sudo grub-mkconfig -o /boot/grub/grub.cfg "$@"; then
   reverse_operation+=("restore_backup_grub_cfg_bak")
@@ -635,7 +611,7 @@ for JS_SCRIPT in "${applied_vivaldi_mods[@]}"; do
     perform_rollback
   fi
 done
-sudo chattr +a /etc/browsers.txt
+sudo chattr +a /etc/browsers.txt || exit
 
 # last use of sudo so it has to go last
 set +x
@@ -649,4 +625,63 @@ if [[ "$restore_state" == "set -o xtrace" ]]; then
   set -x
 fi
 
+# Edit /etc/sudoers
+# I will likely allow the users to change what is given the sudo privileges but the script will check for what is absolutely not allowed to be given sudo privileges for this stuff to work. This is maybe a feature for another time.
+
+for binaries in "${binaries_to_allow[@]}"; do
+  if ! sudo grep -qF "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" /etc/sudoers.d/90-allowed-commands; then
+    echo "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" | sudo tee --append /etc/sudoers.d/90-allowed-commands || exit_cleanly
+    reverse_operation+=("binary_to_remove $binaries")
+  elif sudo grep -qF "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" /etc/sudoers.d/90-allowed-commands; then
+    echo "$binaries" already exists
+  else
+    perform_rollback
+  fi
+done
+
+if sudo chmod 0440 /etc/sudoers.d/90-allowed-commands; then
+  reverse_operation+=("undo_chmod_90-allowed-commands")
+else
+  perform_rollback
+fi
+
+if ! sudo visudo --check >/dev/null; then
+  perform_rollback
+fi
+if ! sudo grep -qF "@includedir /etc/sudoers.d" /etc/sudoers; then
+  if echo "@includedir /etc/sudoers.d" | sudo tee --append /etc/sudoers; then
+    reverse_operation+=("undo_include_sudoers_d_dir")
+  else
+    perform_rollback
+  fi
+fi
+
+# should probably put this in a temp file then validate then apply but rn, i am too lazy.
+if sudo grep -qF "@includedir" /etc/sudoers; then
+  sudo sed -i '/@includedir/{/@includedir \/etc\/sudoers\.d/!d;}' /etc/sudoers
+fi
+
+if ! sudo visudo --check >/dev/null; then
+  perform_rollback
+fi
+
+#TODO: Remove Root privileges from the current user. - need to find out what groups the user is part of which has sudo
+#IDEA: create our own brand new /etc/sudoers so we don't assume anything about the users
+# readarray < <(sudo -ll | awk -F ": " '/^Sudoers entry: / {print $2}') -d "\n" FILES_IN_SUDOERS_DIR
+readarray -t FILES_IN_SUDOERS_DIR < <(sudo -ll | awk -F ": " '/^Sudoers entry: / {print $2}')
+for file in "${FILES_IN_SUDOERS_DIR[@]}"; do
+  if [ ! "$file" == /etc/sudoers.d/90-allowed-commands ]; then
+    sudo mv "$file" ~/.local/share/Trash/files/
+    reverse_operation+=("reverse_trash_non_90-allowed-commands-files $file")
+  fi
+done
+
+for important_file2 in "${important_files2[@]}"; do
+  if sudo chattr +i "$important_file2"; then
+    reverse_operation+=("reverse_immute $important_file2")
+  else
+    perform_rollback
+  fi
+done
+# From this point on, anything that requires sudo should be in the allowed binaries array
 mv "$HOME/CTCT" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}"
