@@ -6,7 +6,6 @@
 # contemplating whether to create different script files and source them. This script is getting messy.
 # Checks starts
 # I am contemplating whether to add a check for existing files that might be on the user's computer and to check for them and tell the user to deal with them or if they want them to be overwritten and what would be overwritten. So far in the script, these are the files and directories that will be overwritten if they already exist
-
 exit         # in case this is accidentally ran. I don't want to ruin my computer. Remove this when needed and the shellcheck lines above
 echo_red() { # for things that needs the users attention
   builtin echo -e "\033[38;2;255;0;0m >>> $* <<< \033[0m"
@@ -15,16 +14,16 @@ if [ ! $# -eq 0 ]; then
   echo_red "Remove arguments before running please"
 fi
 
+if [ "$EUID" -eq 0 ]; then
+  echo_red "Don't run as root. You will be prompted for sudo privileges."
+  exit
+fi
+
 exec 9>/tmp/myscript.lock
 flock -n 9 || {
   echo_red "Already running" >&2
   exit 1
 }
-
-if [ "$EUID" -eq 0 ]; then
-  echo_red "Don't run as root. You will be prompted for sudo privileges."
-  exit
-fi
 declare -a missing_dependencies=()
 declare -a overwritten_files=()
 declare -a applied_vivaldi_mods=()
@@ -62,29 +61,60 @@ check_dependencies() {
 }
 check_dependencies
 # we are unable to warn the users about the JS files that may be overwritten unless we ping the github repo (which we will already do when we clone) to check what files might be overwritten
-potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/systemd/system/multi-user.target.wants/closetabs.service" "/etc/matt_damon.sh" "/etc/browsers.txt" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "/etc/sudoers.d/90-allowed-commands")
+potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/systemd/system/multi-user.target.wants/closetabs.service" "/etc/matt_damon.sh" "/etc/browsers.txt" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "/etc/sudoers.d/90-allowed-commands" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/.local/share/Trash/files/vivaldimods_output.txt" "$HOME/.local/share/Trash/files/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}" "$HOME/.local/share/Trash/files/tle" "/etc/grub.d/10_linux" "/etc/grub.d/40_custom")
 for file in "${potentially_overwritten_files[@]}"; do
   if [[ -e "$file" ]]; then
     overwritten_files+=("$file")
   fi
 done
 if [[ "${#overwritten_files[@]}" -eq 0 ]]; then
-  echo "No files will be overwritten"
   if command -v vivaldi >/dev/null; then # checks if vivaldi is installed. if it is, there may be some js files. if not, there is no reason to suspect
-    echo "Also check for JS files"
+    echo "No files will be overwritten"
+    echo_red "Also check for JS files"
+    echo "Use this time to check for JS files. Press enter when checked"
+    secs=90
+    while [ "$secs" -ge 0 ]; do
+      echo -ne "Auto Continuing in $secs seconds...\033[0K\r"
+
+      if read -t 1 -r _; then
+        break
+      fi
+
+      ((secs--))
+    done
   fi
 elif [[ "${#overwritten_files[@]}" -ne 0 ]]; then
-  echo_red "${#overwritten_files[@]}" 'overwritten_files!:'
+  echo_red "${#overwritten_files[@]}" 'overwritten files!:'
   for overwritten_file in "${overwritten_files[@]}"; do
     echo "$overwritten_file"
   done
   if command -v vivaldi >/dev/null; then # checks if vivaldi is installed. if it is, there may be some js files. if not, there is no reason to suspect
-    echo "Also check for JS files"
+    echo_red "Also check for JS files"
   fi
   exit
 else
   echo_red "overwritten_files array is not working. Array:"
-  "${overwritten_files[@]}"
+  echo "${overwritten_files[@]}"
+  exit
+fi
+
+potentially_overwritten_directories=("$HOME/CTCT/" "$HOME/.local/hooks.bin" "$HOME/.local/share/Trash/files/hooks" "$HOME/.local/share/Trash/files/etc" "$HOME/.local/share/Trash/files/pacman.d" "$HOME/.local/share/Trash/files/sudoers.d" "$HOME/.local/share/Trash/files/go" "$HOME/.local/share/Trash/files/CTCT")
+for dir in "${potentially_overwritten_directories[@]}"; do
+  if [[ -e "$dir" ]]; then
+    overwritten_dirs+=("$dir")
+  fi
+done
+if [[ "${#overwritten_dirs[@]}" -eq 0 ]]; then
+  true
+elif [[ "${#overwritten_dirs[@]}" -ne 0 ]]; then
+  echo_red "${#overwritten_dirs[@]}" 'overwritten dirs!:'
+  for overwritten_dir in "${overwritten_dirs[@]}"; do
+    echo "$overwritten_dir"
+  done
+  exit
+else
+  echo_red "overwritten_dirs array is not working. Array:"
+  echo "${overwritten_dirs[@]}"
   exit
 fi
 
@@ -99,8 +129,7 @@ grab_dir_state() {
   local state_name="$1"
   for d in "${affected_dirs[@]}"; do
     if [[ -e $d ]]; then
-      echo "$d"
-      sudo find "$d" -maxdepth 1 -type f -exec md5sum {} + | sort >"$HOME/$state_name" || exit # if sudo doesn't work. Exit
+      sudo find "$d" -maxdepth 1 -type f -exec md5sum {} + | sort >"$HOME/$state_name" || exit_cleanly # if sudo doesn't work. Exit
     fi
   done
   echo "Finished capturing filesystem state"
@@ -109,11 +138,14 @@ export LC_ALL=C
 declare -a reverse_operation=()
 perform_rollback() {
   trap - ERR # stops running perform_rollback if perform_rollback fails.
-  echo_red "\n[!] ERROR DETECTED. INITIATING ROLLBACK..."
+  echo_red "[!] ERROR DETECTED. INITIATING ROLLBACK..."
 
   # Get the total number of items in the stack
   total_items=${#reverse_operation[@]}
-
+  if [[ $total_items -eq 0 ]]; then
+    exit # no reason to tell the user if there is nothing to reverse.
+  fi
+  last_item=${reverse_operation[-1]} &>/dev/null
   # Loop backwards through the array
   for ((i = total_items - 1; i >= 0; i--)); do
     current_undo_command="${reverse_operation[$i]}"
@@ -123,10 +155,11 @@ perform_rollback() {
     $current_undo_command
   done
 
+  echo "Checking for leftovers."
+  echo "this may take up to one minute"
+  grab_dir_state newstate.txt
+
   if [[ -e "$HOME/oldstate.txt" && -e "$HOME/newstate.txt" ]]; then
-    echo "Rollback complete. Checking for leftovers."
-    echo "this may take up to one minute"
-    grab_dir_state newstate.txt
     echo "Ready. Click enter to view diff"
     secs=90
     while [ "$secs" -ge 0 ]; do
@@ -138,7 +171,6 @@ perform_rollback() {
 
       ((secs--))
     done
-    # diff --side-by-side --color=always --suppress-common-lines "$HOME/oldstate.txt" "$HOME/newstate.txt"
     mid=$((COLUMNS / 2))
     string_length_of_oldstate=12
     pad=$((mid - string_length_of_oldstate))
@@ -152,6 +184,7 @@ perform_rollback() {
     diff --side-by-side --width="$COLUMNS" --color=always --palette='de=38;2;255;0;0:ad=38;2;0;255;0:hd=1;38;2;255;255;255:ln=38;2;128;128;128' --suppress-common-lines "$HOME/oldstate.txt" "$HOME/newstate.txt"
     echo "Leftover Check Finished. Examine for any modified files"
   fi
+  echo -e "\033[38;2;124;252;0m Rollback complete \033[0m"
   exit 1
 
 }
@@ -190,7 +223,7 @@ undo_create_trash_dir() { rm -rf "$HOME/.local/share/Trash/files"; }
 undo_move_password_file() { mv "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME"; }
 undo_backup_grub_custom() { sudo mv -f /etc/grub.d/40_custom.bak /etc/grub.d/40_custom; }
 undo_sed_grub_custom() { sudo mv -f /etc/grub.d/40_custom.bak /etc/grub.d/40_custom; }
-undo_create_password_file() { mv GRUB_PASSWORD-KEEP_SAFE.txt "$HOME/.local/share/Trash/files/"; }
+undo_create_password_file() { mv "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/.local/share/Trash/files/"; }
 undo_append_grub_custom() { sudo sed -i -e '/set superusers=\"linuxconfig\"/d' -e '/password_pbkdf2 linuxconfig/d' /etc/grub.d/40_custom; }
 restore_backup_grub_cfg_bak() { sudo mv -f "/boot/grub/grub.cfg.bak.${backup_timestamp}" /boot/grub/grub.cfg; }
 undo_unrestrict_grub() { sudo sed -i -e 's/--class os --unrestricted/--class os/g' /etc/grub.d/10_linux; }
@@ -199,27 +232,7 @@ undo_restrict_grub() { sudo sed -i "s/submenu_id_option 'gnulinux-advanced/menue
 # undo_create_grub2() { rm grub2.hook; }
 undo_create_etc_dir() { sudo mv -f /etc "$HOME/.local/share/Trash/files/"; } # this only removes etc if you didn't have it before
 undo_create_pacman_d_dir() { sudo mv -f /etc/pacman.d "$HOME/.local/share/Trash/files/"; }
-#undo_move_hooks() {
-#    sudo mv /etc/pacman.d/hooks/grub1.hook "$HOME"
-#    sudo mv /etc/pacman.d/hooks/grub2.hook "$HOME"
-#}
-#binaries_to_allow=("curl" "jq" "adb" "bat" "blkid" "cat " "chmod" "docker-compose " "du" "flatpak" "fuser" "grep" "journalctl " "killall" "ln" "make" "micro" "mv" "nano " "nbfc" "pacman " "pkill" "rm" "rmpc" "sed" "sensors-detect " "sleep" "ss" "tailscale" "tlp " "tlp-stat" "touch" "ufw " "yay" "systemctl status" "systemctl start" "systemctl restart" "systemctl enable" "systemctl is-active" "systemctl list-units" "systemctl list-unit-files" "systemctl show" "systemctl status *" "systemctl start *" "systemctl restart *" "systemctl enable *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *")
-# why the following weren't included
-# make: Can create a simple makefile such as the following to run any command
-# ```make
-# hello:
-# sudo echo "Hello, World"
-# ```
-# micro/nvim/: when a user opens a terminal in micro launched with sudo, they get access to a root terminal
-# nano: a user can run ^R and then ^X to launch any command
-# sed: a user can run the following command (the file can be any file. not just 10_linux )
-# ```bash
-# sudo sed -e '1e chattr -i /etc/grub.d/10_linux' /etc/hostname
-# ```
-# yay: user can create their own dummy package with commands such as `sudo chattr -i ` and submit to AUR and can run those commands
-# pacman: user can download their own script using pacman -U to install a local package, also allowing a way to run commands
-# systemctl start/restart/enable: user can create their own service, with their own Exec line to run any command using systemctl enable and start the service using systemctl start. systemctl restart does the same thing to a newly created service as systemctl enable and systemctl start so we have to stop it for the same reason. We can also block the `mv` command  instead stopping the user from ever creating their own services but the mv command is used more than the systemctl commands
-binaries_to_allow=("curl *" "jq *" "adb *" "bat *" "blkid *" "cat *" "chmod *" "docker-compose *" "du *" "flatpak *" "fuser *" "grep *" "journalctl *" "killall *" "ln *" "mv *" "nbfc *" "pkill *" "rm *" "rmpc *" "sensors-detect *" "sleep *" "ss *" "tailscale *" "tlp *" "tlp-stat *" "touch *" "ufw *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "visudo --check" "sed -i '/@includedir/{/@includedir \/etc\/sudoers\.d/!d;}' /etc/sudoers" "sudo chattr +i /etc/sudoers" "sudo chattr +i /etc/sudoers.d")
+binaries_to_allow=("curl *" "jq *" "adb *" "bat *" "blkid *" "cat *" "chmod *" "docker-compose *" "du *" "flatpak *" "fuser *" "grep *" "journalctl *" "killall *" "ln *" "mv *" "nbfc *" "pkill *" "rm *" "rmpc *" "sensors-detect *" "sleep *" "ss *" "tailscale *" "tlp *" "tlp-stat *" "touch *" "ufw *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "tee *" "visudo --check" "sed -i '/@includedir/{/@includedir \/etc\/sudoers\.d/!d;}' \/etc\/sudoers" "sudo chattr +i \/etc\/sudoers" "sudo chattr +i \/etc\/sudoers.d")
 undo_create_root() { echo_red "It is not safe for this script to undo the root password creation automatically. Check file for the root password to manually change."; }
 undo_create_local_bin_dir() { echo_red "This folder needs to be here. Not going to undo it"; }
 undo_include_sudoers_d_dir() { sudo mv -f /etc/sudoers.d/ "$HOME/.local/share/Trash/files/"; }
@@ -240,14 +253,15 @@ apply_vivaldi_mods() {
   set -o pipefail # if anything in this function, fails, this will catch it
   cd "$HOME/CTCT"
   if [[ "$restore_state" == "set -o xtrace" ]]; then
-    sudo bash -x /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee vivaldimods_output.txt || exit
+    sudo bash -x /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee "$HOME/CTCT/vivaldimods_output.txt" || exit_cleanly
   else
-    sudo bash /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee vivaldimods_output.txt || exit
+    sudo bash /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee "$HOME/CTCT/vivaldimods_output.txt" || exit_cleanly
   fi
-  sed -i -e "/mods are already indented/d" -e "/Nothing missing/d" -e "/Inserted <script src/d" -e "/Adding missing entries:/d" -e "/Done./d" vivaldimods_output.txt
-  sudo awk '{print $2}' vivaldimods_output.txt | sudo tee tmpfile.txt >/dev/null && sudo mv -f tmpfile.txt vivaldimods_output.txt || exit
-  readarray <vivaldimods_output.txt new_host_entries
-  mv -f vivaldimods_output.txt "$HOME/.local/share/Trash/files/"
+  sed -i -e "/mods are already indented/d" -e "/Nothing missing/d" -e "/Inserted <script src/d" -e "/Adding missing entries:/d" -e "/Done./d" "$HOME/CTCT/vivaldimods_output.txt"
+  sudo awk '{print $2}' "$HOME/CTCT/vivaldimods_output.txt" | sudo tee tmpfile.txt >/dev/null
+  sudo mv -f tmpfile.txt "$HOME/CTCT/vivaldimods_output.txt" || exit_cleanly
+  readarray <"$HOME/CTCT/vivaldimods_output.txt" new_host_entries
+  mv -f "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/Trash/files/"
   chmod +x /etc/pacman.d/hooks.bin/vivaldimods.sh
   set +o pipefail
 }
@@ -269,26 +283,32 @@ correct_flag_helper() { # 189
 }
 exit_cleanly() {
   echo $?
-  exit
+  echo "Above was Exit code of command that failed"
+  perform_rollback
 }
-important_files=('/etc/hosts' '/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pacman.d/hooks/grub1.hook' '/etc/pacman.d/hooks/grub2.hook' '/etc/pacman.d/hooks.bin/vivaldimods.sh' '/etc/systemd/system/closetabs.service' '/etc/matt_damon.sh' '/etc/sudoers' '/etc/sudoers.d' "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock")
+important_files=('/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pacman.d/hooks/grub1.hook' '/etc/pacman.d/hooks/grub2.hook' '/etc/pacman.d/hooks.bin/vivaldimods.sh' '/etc/systemd/system/closetabs.service' '/etc/systemd/system/multi-user.target.wants/closetabs.service' '/etc/matt_damon.sh' "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" '/etc/sudoers.d/90-allowed-commands' '/etc/grub.d/40_custom' '/etc/grub.d/10_linux' '/opt/vivaldi/resources/vivaldi/window.html')
 important_files2=('/etc/sudoers' '/etc/sudoers.d')
+important_files_to_append=('/etc/browsers.txt' '/etc/hosts')
 backup_timestamp=$(date '+%Y-%m-%dT%H-%M-%S')
 readonly backup_timestamp
 restore_state=$(set +o | grep -F -- '-o xtrace' || true) # this checks if the script was run with bash -x so after it hides the passwords, it shows the output of -x
 set +x
 readonly manual_password="wompwomp" # manual_password is for debugging/developing only
-readonly rand32charstr
+# TODO: to make more random, give a range instead of just 32, it could be another random number? Ensures that it is harder to hashcat(i think it makes it harder)
 rand32charstr=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1) # change it from 32 to another amount of characters if you want to easily be able to jailbreak it.
+readonly rand32charstr
 # TODO: replace the "tr" command with an "awk" command instead.
-readonly chosen_password="$manual_password"
-if [[ "$restore_state" == "set -o xtrace" ]]; then
-  set -x
-fi
+# Choose a password (manual or random) be ensuring that a "#" isn't at the beginning of the password you want and that there is a "#" at the password you do not want
+# Add a "#" at the beginning of the passowrd to comment it out
+#readonly chosen_password="$manual_password"
+readonly chosen_password="$rand32charstr"
 grub_password=$(printf '%s\n%s\n' "$chosen_password" "$chosen_password" |
   grub-mkpasswd-pbkdf2 |
   sed --quiet '3p')
 readonly grub_password
+if [[ "$restore_state" == "set -o xtrace" ]]; then
+  set -x
+fi
 current_date=$(date)
 readonly current_date
 proper_format_grub_password="${grub_password/PBKDF2 hash of your password is /}"
@@ -319,6 +339,7 @@ set -eEu
 #	perform_rollback
 # fi
 # But that is not a priority. Priority is making sure that this script works with it's 500 lines then reducing it using this method.
+sudo -vk || exit_cleanly # to ensure that the user has sudo privileges and can run sudo?. Probably will make this more better by ensuring the user can run sudo on all commands neccessary for this script to run
 
 echo "Grabbing current filesystem state"
 grab_dir_state oldstate.txt
@@ -332,15 +353,17 @@ if [[ ! -d $HOME/.local/share/Trash/files ]]; then
 fi
 # Get repo
 cd "$HOME"
-git clone https://github.com/MrSavageBanana/CTCT.git 1>/dev/null || exit
-cd CTCT || exit
+git clone -q https://github.com/MrSavageBanana/CTCT.git
+cd CTCT || exit_cleanly
 
 # Service
-closetabs_creation() { sudo mv -f closetabs.service /etc/systemd/system || exit; }
-move_matt_daemon() { sudo mv -f matt_damon.sh /etc/ || exit; }
+closetabs_creation() { sudo mv -f "$HOME/CTCT/closetabs.service" /etc/systemd/system; }
+move_matt_daemon() { sudo mv -f "$HOME/CTCT/matt_damon.sh" /etc/; }
 closetabs_service_enable() {
-  sudo systemctl daemon-reload || exit
-  sudo systemctl enable --now closetabs || exit
+  set -o pipefail
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now closetabs
+  set +o pipefail
 }
 service_setup=("closetabs_creation" "move_matt_daemon" "closetabs_service_enable")
 reverse_service_setup=("undo_closetabs_creation" "undo_move_matt_daemon" "undo_closetabs_service_enable")
@@ -368,10 +391,10 @@ if [[ ! -d /etc/pacman.d/hooks ]]; then
   fi
 fi
 
-move_vivaldi_sh() { sudo mv -f vivaldimods.sh /etc/pacman.d/hooks.bin || exit; }
-vivaldiupdate_hook() { sudo mv -f vivaldiupdate.hook /etc/pacman.d/hooks || exit; }
-grub1_hook() { sudo mv -f grub1.hook /etc/pacman.d/hooks || exit; }
-grub2_hook() { sudo mv -f grub2.hook /etc/pacman.d/hooks || exit; }
+move_vivaldi_sh() { sudo mv -f "$HOME/CTCT/vivaldimods.sh" /etc/pacman.d/hooks.bin; }
+vivaldiupdate_hook() { sudo mv -f "$HOME/CTCT/vivaldiupdate.hook" /etc/pacman.d/hooks; }
+grub1_hook() { sudo mv -f "$HOME/CTCT/grub1.hook" /etc/pacman.d/hooks; }
+grub2_hook() { sudo mv -f "$HOME/CTCT/grub2.hook" /etc/pacman.d/hooks; }
 hooks_setup=("move_vivaldi_sh" "vivaldiupdate_hook" "grub1_hook" "grub2_hook")
 reverse_hooks_setup=("undo_move_vivaldi_sh" "undo_vivaldiupdate_hook" "undo_grub1_hook" "undo_grub2_hook")
 for n in {0..3}; do
@@ -383,7 +406,7 @@ for n in {0..3}; do
 done
 # Javascript
 sudo pacman -S --needed --noconfirm vivaldi
-cd "Custom_Vivaldi_JS(AI)" || exit
+cd "$HOME/CTCT/Custom_Vivaldi_JS(AI)" || exit_cleanly
 # This array needs to be upgraded by making all files in Custom_Vivaldi_JS be in it, regardless of name
 # If i decide to have the bundles of JS scripts as little packs, i will need to
 # 1. add the option to choose which pack and
@@ -400,7 +423,6 @@ for f in *js; do
 done
 cd "$HOME/CTCT"
 
-echo "Applying JS and hosts"
 if apply_vivaldi_mods; then
   reverse_operation+=("undo_vivaldimods_sh")
 else
@@ -444,9 +466,7 @@ fi
 cd "$HOME"
 # Removing GRUB_PASSWORD-KEEP_SAFE.txt and create a backup of /etc/grub.d/40_custom
 
-if [[ -r GRUB_PASSWORD-KEEP_SAFE.txt ]]; then # this could be problematic if the user doesn't name their unlocked file GRUB_PASSWORD-KEEP_SAFE.txt
-  echo "Removing existing password"
-
+if [[ -r "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt" ]]; then # this could be problematic if the user doesn't name their unlocked file GRUB_PASSWORD-KEEP_SAFE.txt
   if mv "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/.local/share/Trash/files"; then
     reverse_operation+=("undo_move_password_file")
   else
@@ -467,13 +487,12 @@ if [[ -r GRUB_PASSWORD-KEEP_SAFE.txt ]]; then # this could be problematic if the
   fi
 fi
 
-echo "Storing GRUB password..."
 set +x
 if {
   echo "KEEP THE FOLLOWING PASSWORD SAFE. You will need the following password to enter into GRUB and system: "
   echo "${chosen_password}"
   echo "Last updated ${current_date}"
-} >GRUB_PASSWORD-KEEP_SAFE.txt; then # for a period of time until this file is shred, someone could theoretically see what is inside it. Not sure how to stop this.
+} >"$HOME/GRUB_PASSWORD-KEEP_SAFE.txt"; then # for a period of time until this file is shred, someone could theoretically see what is inside it. Not sure how to stop this.
   reverse_operation+=("undo_create_password_file")
 else
   perform_rollback
@@ -485,7 +504,7 @@ fi
 
 set -eEuo pipefail
 # This deletes both the password_pbkdf2 and the superusers line at once
-sudo sed -i '/linuxconfig/d' /etc/grub.d/40_custom || exit
+sudo sed -i '/linuxconfig/d' /etc/grub.d/40_custom || exit_cleanly
 if {
   echo "set superusers=\"linuxconfig\""
   echo "password_pbkdf2 linuxconfig ${proper_format_grub_password}"
@@ -511,7 +530,7 @@ fi
 
 # Same as running sudo update-grub
 set -e
-sudo cp /boot/grub/grub.cfg "/boot/grub/grub.cfg.bak.${backup_timestamp}" || exit
+sudo cp /boot/grub/grub.cfg "/boot/grub/grub.cfg.bak.${backup_timestamp}" || exit_cleanly
 set +e
 
 if sudo grub-mkconfig -o /boot/grub/grub.cfg "$@"; then
@@ -539,7 +558,7 @@ if [[ ! -d /etc/pacman.d/ ]]; then
 fi
 
 # end of grub setup
-echo_red "Select a date to stop focussing"
+echo_red "Select a date to stop focussing..."
 echo "Click enter to continue"
 secs=10
 while [ "$secs" -ge 0 ]; do
@@ -553,7 +572,7 @@ while [ "$secs" -ge 0 ]; do
 done
 
 selected_end_date=$(dialog --clear --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
-echo_red "select a time to end the script"
+echo_red "Select a time to end the script..."
 selected_end_time=$(dialog --clear --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
 ending="$selected_end_date $selected_end_time"
 ending_epoch=$(date -d "$ending" +%s)
@@ -586,7 +605,6 @@ if [[ -e "$HOME/go/bin/tle" ]]; then
     done
     selected_end_date
   else
-    echo "COMPLETED creating GRUB_PASSWORD-KEEP_SAFE.lock"
     reverse_operation+=("undo_tle_lock")
     shred "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt" # shred will overwrite the file and ensure that any file recovery fails. A person could run SystemRescue and recover the file easily if the file wasn't overwritten
   fi
@@ -611,7 +629,14 @@ for JS_SCRIPT in "${applied_vivaldi_mods[@]}"; do
     perform_rollback
   fi
 done
-sudo chattr +a /etc/browsers.txt || exit
+
+for important_file_to_append in "${important_files_to_append[@]}"; do
+  if sudo chattr +a "$important_file_to_append"; then
+    reverse_operation+=("reverse_immute $important_file_to_append")
+  else
+    perform_rollback
+  fi
+done
 
 # last use of sudo so it has to go last
 set +x
@@ -629,11 +654,13 @@ fi
 # I will likely allow the users to change what is given the sudo privileges but the script will check for what is absolutely not allowed to be given sudo privileges for this stuff to work. This is maybe a feature for another time.
 
 for binaries in "${binaries_to_allow[@]}"; do
+  # will also  work if the file doesn't exist
   if ! sudo grep -qF "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" /etc/sudoers.d/90-allowed-commands; then
     echo "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" | sudo tee --append /etc/sudoers.d/90-allowed-commands || exit_cleanly
     reverse_operation+=("binary_to_remove $binaries")
+    true
   elif sudo grep -qF "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" /etc/sudoers.d/90-allowed-commands; then
-    echo "$binaries" already exists
+    true
   else
     perform_rollback
   fi
@@ -671,7 +698,8 @@ fi
 readarray -t FILES_IN_SUDOERS_DIR < <(sudo -ll | awk -F ": " '/^Sudoers entry: / {print $2}')
 for file in "${FILES_IN_SUDOERS_DIR[@]}"; do
   if [ ! "$file" == /etc/sudoers.d/90-allowed-commands ]; then
-    sudo mv "$file" ~/.local/share/Trash/files/
+    sudo mv "$file" "$HOME/.local/share/Trash/files/"
+    echo_red "MOVED $file to $HOME/.local/share/Trash/files"
     reverse_operation+=("reverse_trash_non_90-allowed-commands-files $file")
   fi
 done
@@ -685,3 +713,4 @@ for important_file2 in "${important_files2[@]}"; do
 done
 # From this point on, anything that requires sudo should be in the allowed binaries array
 mv "$HOME/CTCT" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}"
+echo -e "\033[38;2;124;252;0m Completed Script \033[0m"
