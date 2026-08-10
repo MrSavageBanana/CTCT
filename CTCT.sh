@@ -6,7 +6,7 @@
 # contemplating whether to create different script files and source them. This script is getting messy.
 # Checks starts
 # I am contemplating whether to add a check for existing files that might be on the user's computer and to check for them and tell the user to deal with them or if they want them to be overwritten and what would be overwritten. So far in the script, these are the files and directories that will be overwritten if they already exist
-exit         # in case this is accidentally ran. I don't want to ruin my computer. Remove this when needed and the shellcheck lines above
+# exit         # in case this is accidentally ran. I don't want to ruin my computer. Remove this when needed and the shellcheck lines above
 echo_red() { # for things that needs the users attention
   builtin echo -e "\033[38;2;255;0;0m >>> $* <<< \033[0m"
 }
@@ -286,8 +286,8 @@ exit_cleanly() {
   echo "Above was Exit code of command that failed"
   perform_rollback
 }
-important_files=('/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pacman.d/hooks/grub1.hook' '/etc/pacman.d/hooks/grub2.hook' '/etc/pacman.d/hooks.bin/vivaldimods.sh' '/etc/systemd/system/closetabs.service' '/etc/systemd/system/multi-user.target.wants/closetabs.service' '/etc/matt_damon.sh' "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" '/etc/sudoers.d/90-allowed-commands' '/etc/grub.d/40_custom' '/etc/grub.d/10_linux' '/opt/vivaldi/resources/vivaldi/window.html')
-important_files2=('/etc/sudoers' '/etc/sudoers.d')
+important_files=('/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pacman.d/hooks/grub1.hook' '/etc/pacman.d/hooks/grub2.hook' '/etc/pacman.d/hooks.bin/vivaldimods.sh' '/etc/systemd/system/closetabs.service' '/etc/matt_damon.sh' "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" '/etc/grub.d/40_custom' '/etc/grub.d/10_linux' '/opt/vivaldi/resources/vivaldi/window.html')
+important_files2=('/etc/sudoers' '/etc/sudoers.d' '/etc/sudoers.d/90-allowed-commands')
 important_files_to_append=('/etc/browsers.txt' '/etc/hosts')
 backup_timestamp=$(date '+%Y-%m-%dT%H-%M-%S')
 readonly backup_timestamp
@@ -300,8 +300,8 @@ readonly rand32charstr
 # TODO: replace the "tr" command with an "awk" command instead.
 # Choose a password (manual or random) be ensuring that a "#" isn't at the beginning of the password you want and that there is a "#" at the password you do not want
 # Add a "#" at the beginning of the passowrd to comment it out
-#readonly chosen_password="$manual_password"
-readonly chosen_password="$rand32charstr"
+readonly chosen_password="$manual_password"
+#readonly chosen_password="$rand32charstr"
 grub_password=$(printf '%s\n%s\n' "$chosen_password" "$chosen_password" |
   grub-mkpasswd-pbkdf2 |
   sed --quiet '3p')
