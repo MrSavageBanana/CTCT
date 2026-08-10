@@ -99,8 +99,8 @@ if [ -z "$missing" ]; then
   echo "Nothing missing. /etc/hosts is up to date."
 else
   # Claude gave me this idea for implementing my  countdown
+  count=0
   while IFS= read -r; do
-    count=0
     echo -ne "Added $count entries\r"
     ((count++))
   done <<<"$missing"
