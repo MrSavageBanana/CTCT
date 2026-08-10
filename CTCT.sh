@@ -232,7 +232,7 @@ undo_restrict_grub() { sudo sed -i "s/submenu_id_option 'gnulinux-advanced/menue
 # undo_create_grub2() { rm grub2.hook; }
 undo_create_etc_dir() { sudo mv -f /etc "$HOME/.local/share/Trash/files/"; } # this only removes etc if you didn't have it before
 undo_create_pacman_d_dir() { sudo mv -f /etc/pacman.d "$HOME/.local/share/Trash/files/"; }
-binaries_to_allow=("curl *" "jq *" "adb *" "bat *" "blkid *" "cat *" "chmod *" "docker-compose *" "du *" "flatpak *" "fuser *" "grep *" "journalctl *" "killall *" "ln *" "mv *" "nbfc *" "pkill *" "rm *" "rmpc *" "sensors-detect *" "sleep *" "ss *" "tailscale *" "tlp *" "tlp-stat *" "touch *" "ufw *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "tee *" "visudo --check" "sed -i '/@includedir/{/@includedir \/etc\/sudoers\.d/!d;}' \/etc\/sudoers" "sudo chattr +i \/etc\/sudoers" "sudo chattr +i \/etc\/sudoers.d")
+binaries_to_allow=("curl *" "jq *" "adb *" "bat *" "blkid *" "cat *" "chmod *" "docker-compose *" "du *" "flatpak *" "fuser *" "grep *" "journalctl *" "killall *" "ln *" "mv *" "nbfc *" "pkill *" "rm *" "rmpc *" "sensors-detect *" "sleep *" "ss *" "tailscale *" "tlp *" "tlp-stat *" "touch *" "ufw *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "tee *" "visudo --check" "sed -i '/@includedir/{/@includedir /etc/sudoers\.d/!d;}' /etc/sudoers" "sudo chattr +i /etc/sudoers" "sudo chattr +i /etc/sudoers.d")
 undo_create_root() { echo_red "It is not safe for this script to undo the root password creation automatically. Check file for the root password to manually change."; }
 undo_create_local_bin_dir() { echo_red "This folder needs to be here. Not going to undo it"; }
 undo_include_sudoers_d_dir() { sudo mv -f /etc/sudoers.d/ "$HOME/.local/share/Trash/files/"; }
@@ -655,7 +655,7 @@ fi
 
 for binaries in "${binaries_to_allow[@]}"; do
   # will also  work if the file doesn't exist
-  if ! sudo grep -qF "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" /etc/sudoers.d/90-allowed-commands; then
+  if ! sudo grep -sqF "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" /etc/sudoers.d/90-allowed-commands; then
     echo "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" | sudo tee --append /etc/sudoers.d/90-allowed-commands || exit_cleanly
     reverse_operation+=("binary_to_remove $binaries")
     true

@@ -100,6 +100,7 @@ if [ -z "$missing" ]; then
 else
   # Claude gave me this idea for implementing my  countdown
   while IFS= read -r; do
+    count=0
     echo -ne "Added $count entries\r"
     ((count++))
   done <<<"$missing"
