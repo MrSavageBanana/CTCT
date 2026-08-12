@@ -10,4 +10,4 @@ RestartSec=1
 User=root
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=CTCT.target
