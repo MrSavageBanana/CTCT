@@ -46,7 +46,7 @@ closetabs2() {
   while IFS=$'\t' read -r domain id; do
     domains+=("$domain")
     ids+=("$id")
-  done < <(curl -s http://localhost:9222/json/list | awk -f'"' '
+  done < <(curl -s http://localhost:9222/json/list | awk -F '"' '
     /"id":/ { id = $4 }
     /"url": "https?:\/\// { split($4, a, "/"); print a[3] "\t" id } 
     ')
