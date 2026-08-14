@@ -6,7 +6,7 @@
 # contemplating whether to create different script files and source them. This script is getting messy.
 # Checks starts
 # I am contemplating whether to add a check for existing files that might be on the user's computer and to check for them and tell the user to deal with them or if they want them to be overwritten and what would be overwritten. So far in the script, these are the files and directories that will be overwritten if they already exist
-# exit         # in case this is accidentally ran. I don't want to ruin my computer. Remove this when needed and the shellcheck lines above
+exit         # in case this is accidentally ran. I don't want to ruin my computer. Remove this when needed and the shellcheck lines above
 echo_red() { # for things that needs the users attention
   builtin echo -e "\033[38;2;255;0;0m >>> $* <<< \033[0m"
 }
@@ -61,7 +61,7 @@ check_dependencies() {
 }
 check_dependencies
 # we are unable to warn the users about the JS files that may be overwritten unless we ping the github repo (which we will already do when we clone) to check what files might be overwritten
-potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/systemd/system/multi-user.target.wants/closetabs.service" "/etc/matt_damon.sh" "/etc/browsers.txt" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "/etc/sudoers.d/90-allowed-commands" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/.local/share/Trash/files/vivaldimods_output.txt" "$HOME/.local/share/Trash/files/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}" "$HOME/.local/share/Trash/files/tle")
+potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/systemd/system/CTCT.target.wants/closetabs.service" "/etc/matt_damon.sh" "/etc/browsers.txt" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "/etc/sudoers.d/90-allowed-commands" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/.local/share/Trash/files/vivaldimods_output.txt" "$HOME/.local/share/Trash/files/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}" "$HOME/.local/share/Trash/files/tle")
 for file in "${potentially_overwritten_files[@]}"; do
   if [[ -e "$file" ]]; then
     overwritten_files+=("$file")
@@ -98,7 +98,7 @@ else
   exit
 fi
 
-potentially_overwritten_directories=("$HOME/CTCT/" "$HOME/.local/hooks.bin" "$HOME/.local/share/Trash/files/hooks" "$HOME/.local/share/Trash/files/etc" "$HOME/.local/share/Trash/files/pacman.d" "$HOME/.local/share/Trash/files/sudoers.d" "$HOME/.local/share/Trash/files/go" "$HOME/.local/share/Trash/files/CTCT")
+potentially_overwritten_directories=("$HOME/CTCT/" "/etc/systemd/system/CTCT.target.wants" "$HOME/.local/share/Trash/files/hooks.bin" "$HOME/.local/share/Trash/files/hooks" "$HOME/.local/share/Trash/files/etc" "$HOME/.local/share/Trash/files/pacman.d" "$HOME/.local/share/Trash/files/sudoers.d" "$HOME/.local/share/Trash/files/go" "$HOME/.local/share/Trash/files/CTCT")
 for dir in "${potentially_overwritten_directories[@]}"; do
   if [[ -e "$dir" ]]; then
     overwritten_dirs+=("$dir")
@@ -118,18 +118,14 @@ else
   exit
 fi
 
-if [[ -d $HOME/CTCT ]]; then
-  echo_red "$HOME/CTCT directory already exists"
-  exit
-elif [[ ! -d $HOME/CTCT ]]; then
-  echo "No directories will be overwritten"
-fi
-
 grab_dir_state() {
   local state_name="$1"
+  if [[ -e "$HOME/$state_name" ]]; then
+    mv -f "$HOME/$state_name" "$HOME/.local/share/Trash/files/"
+  fi
   for d in "${affected_dirs[@]}"; do
     if [[ -e $d ]]; then
-      sudo find "$d" -maxdepth 1 -type f -exec md5sum {} + | sort >"$HOME/$state_name" || exit_cleanly # if sudo doesn't work. Exit
+      sudo find "$d" -maxdepth 1 -type f -exec md5sum {} + | sort >>"$HOME/$state_name"
     fi
   done
   echo "Finished capturing filesystem state"
@@ -206,7 +202,7 @@ undo_vivaldi_JS_SCRIPTS() {
   if [[ "${#applied_vivaldi_mods[@]}" -gt 0 ]]; then
     sudo mv -f "${applied_vivaldi_mods[@]}" "$HOME/CTCT/Custom_Vivaldi_JS(AI)"
   fi
-  cd -
+  cd "$HOME"
 }
 undo_vivaldimods_sh() {
   for JS in "${applied_vivaldi_mods[@]}"; do
@@ -241,6 +237,7 @@ undo_curl_go() { mv "$HOME/CTCT/go" "$HOME/.local/share/Trash/files/"; }
 undo_install_tle() { mv "$HOME/go/bin/tle" "$HOME/.local/share/Trash/files/"; }
 undo_tle_lock() { mv "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Trash/files/"; }
 undo_chmod_90-allowed-commands() { sudo chmod 0644 /etc/sudoers.d/90-allowed-commands; }
+undo_chmod_vivaldi_custom() { chmod -x "$HOME/.local/bin/vivaldi-custom"; }
 reverse_trash_non_90-allowed-commands-files() {
   local "$1"=file
   local file
@@ -266,11 +263,12 @@ apply_vivaldi_mods() {
   set +o pipefail
 }
 
-correct_flag_helper() { # 189
+correct_flag_helper() {
   set -o pipefail
   if [[ -e "$HOME/.local/share/applications/vivaldi-stable.desktop" ]]; then
     mv -f "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/"
   fi
+  mv -f "$HOME/CTCT/vivaldi-stable.desktop" "$HOME/.local/share/applications/"
   if [[ ! -d $HOME/.local/bin/ ]]; then
     if mkdir -p "$HOME/.local/bin/"; then
       reverse_operation+=("undo_create_local_bin_dir")
@@ -279,6 +277,13 @@ correct_flag_helper() { # 189
     fi
   fi
   mv --force "$HOME/CTCT/vivaldi-custom" "$HOME/.local/bin"
+  if [[ -e "$HOME/.local/bin/vivaldi-custom" ]]; then
+    chmod +x "$HOME/.local/bin/vivaldi-custom"
+    reverse_operation+=("undo_chmod_vivaldi_custom")
+  else
+    perform_rollback
+  fi
+
   set +o pipefail
 }
 exit_cleanly() {
@@ -286,7 +291,7 @@ exit_cleanly() {
   echo "Above was Exit code of command that failed"
   perform_rollback
 }
-important_files=('/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pacman.d/hooks/grub1.hook' '/etc/pacman.d/hooks/grub2.hook' '/etc/pacman.d/hooks.bin/vivaldimods.sh' '/etc/systemd/system/closetabs.service' '/etc/matt_damon.sh' "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" '/etc/grub.d/40_custom' '/etc/grub.d/10_linux' '/opt/vivaldi/resources/vivaldi/window.html')
+important_files=('/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pacman.d/hooks/grub1.hook' '/etc/pacman.d/hooks/grub2.hook' '/etc/pacman.d/hooks.bin/vivaldimods.sh' '/etc/systemd/system/closetabs.service' '/etc/systemd/system/CTCT.target.wants/' '/etc/matt_damon.sh' "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" '/etc/grub.d/40_custom' '/etc/grub.d/10_linux' '/opt/vivaldi/resources/vivaldi/window.html')
 important_files2=('/etc/sudoers' '/etc/sudoers.d' '/etc/sudoers.d/90-allowed-commands')
 important_files_to_append=('/etc/browsers.txt' '/etc/hosts')
 backup_timestamp=$(date '+%Y-%m-%dT%H-%M-%S')
@@ -300,8 +305,8 @@ readonly rand32charstr
 # TODO: replace the "tr" command with an "awk" command instead.
 # Choose a password (manual or random) be ensuring that a "#" isn't at the beginning of the password you want and that there is a "#" at the password you do not want
 # Add a "#" at the beginning of the passowrd to comment it out
+#readonly chosen_password="$manual_password"
 readonly chosen_password="$manual_password"
-#readonly chosen_password="$rand32charstr"
 grub_password=$(printf '%s\n%s\n' "$chosen_password" "$chosen_password" |
   grub-mkpasswd-pbkdf2 |
   sed --quiet '3p')
@@ -339,6 +344,8 @@ set -eEu
 #	perform_rollback
 # fi
 # But that is not a priority. Priority is making sure that this script works with it's 500 lines then reducing it using this method.
+
+echo "Checking that user can run sudo"
 sudo -vk || exit_cleanly # to ensure that the user has sudo privileges and can run sudo?. Probably will make this more better by ensuring the user can run sudo on all commands neccessary for this script to run
 
 echo "Grabbing current filesystem state"
@@ -711,6 +718,5 @@ for important_file2 in "${important_files2[@]}"; do
     perform_rollback
   fi
 done
-# From this point on, anything that requires sudo should be in the allowed binaries array
 mv "$HOME/CTCT" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}"
 echo -e "\033[38;2;124;252;0m Completed Script \033[0m"
