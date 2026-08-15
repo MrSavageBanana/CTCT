@@ -290,7 +290,7 @@ apply_vivaldi_mods() {
   sed -i -e "/mods are already indented/d" -e "/Nothing missing/d" -e "/Inserted <script src/d" -e "/Adding missing entries:/d" -e "/Done./d" "$HOME/CTCT/vivaldimods_output.txt"
   sudo awk '{print $2}' "$HOME/CTCT/vivaldimods_output.txt" | sudo tee tmpfile.txt >/dev/null
   sudo mv -f tmpfile.txt "$HOME/CTCT/vivaldimods_output.txt" || exit_cleanly
-  readarray <"$HOME/CTCT/vivaldimods_output.txt" new_host_entries
+  readarray <"$HOME/CTCT/vivaldimods_output.txt" -t new_host_entries
   mv -f "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/Trash/files/"
   chmod +x /etc/pacman.d/hooks.bin/vivaldimods.sh
   set +o pipefail

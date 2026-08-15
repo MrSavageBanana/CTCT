@@ -43,7 +43,7 @@ for file in "/opt/vivaldi/resources/vivaldi"/*.js; do
   *) echo "$fname" >>"$HOME/tmpfilevivaldimodssh.txt" ;;
   esac
 done
-readarray <"$HOME/tmpfilevivaldimodssh.txt" INSERTS
+readarray <"$HOME/tmpfilevivaldimodssh.txt" -t INSERTS
 rm "$HOME/tmpfilevivaldimodssh.txt"
 INSERTS+=('video.js' 'shorts.js' 'reddit_hp.js' 'reddit.js' 'youtubeNU.js' 'youtubesearch.js' 'youtubeautoplay.js' 'ytblur.js' 'YTChannel.js' 'ythover.js')
 INSERT_END=("${INSERTS[@]/%/\"></script>}")
