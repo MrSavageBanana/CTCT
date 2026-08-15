@@ -38,7 +38,7 @@ declare -a reverse_hooks_setup=()
 user=$(whoami)
 # TODO: Attempt to fix the missing dependencies. DEPENDS ON: Auto Detect the system's package manager and use it instead of just pacman. At least Debian and Fedora
 check_dependencies() {
-  local deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" "awk" "dialog" "git" "grep" "curl" "chpasswd" "chattr" "systemctl" "grep" "tar" "diff" "find" "md5sum" "sort" "bash" "tr" "fold" "head" "shred" "whoami" "pacman" "basename" "pgrep" "kill" "xargs" "uniq" "file" "strace" "vivaldi")
+  local deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" "awk" "dialog" "git" "grep" "curl" "chpasswd" "chattr" "systemctl" "grep" "tar" "diff" "find" "md5sum" "sort" "bash" "tr" "fold" "head" "shred" "whoami" "basename" "pgrep" "kill" "xargs" "uniq" "file" "strace" "vivaldi")
   for dep in "${deps[@]}"; do
     if ! command -v "$dep" >/dev/null 2>&1; then
       missing_dependencies+=("$dep")
@@ -235,11 +235,11 @@ undo_vivaldi_JS_SCRIPTS() {
 }
 undo_vivaldimods_sh() {
   for JS in "${applied_vivaldi_mods[@]}"; do
-    # some error is here. Not sure what it is:
-    #  Undoing: undo_vivaldimods_sh
-    #  sed: -e expression #1, char 18: unterminated address regex
     [[ -n "$JS" ]] && sudo sed -i "/$JS/d" /opt/vivaldi/resources/vivaldi/window.html
   done
+  # some error is here. Not sure what it is:
+  #  Undoing: undo_vivaldimods_sh
+  #  sed: -e expression #1, char 18: unterminated address regex
   for sites in "${new_host_entries[@]}"; do # this can only work if we decide to run the function because the array which has all the newly added websites won't exist
     [[ -n "$sites" ]] && sudo sed -i "/$sites/d" /etc/hosts
   done
@@ -302,7 +302,7 @@ correct_flag_helper() {
     mv -f "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/"
   fi
   if [[ ! -e "$HOME/.local/share/applications/" ]]; then
-    if mkdir -pf "$HOME/.local/share/applications/"; then
+    if mkdir -p "$HOME/.local/share/applications/"; then
       reverse_operation+=("undo_create_share_applications_dir")
     else
       perform_rollback
@@ -404,12 +404,12 @@ main() {
   cd CTCT || exit_cleanly
 
   # Service
-  closetabs_creation() { sudo mv -f "$HOME/CTCT/closetabs.service" /etc/systemd/system >/dev/null; }
+  closetabs_creation() { sudo mv -f "$HOME/CTCT/closetabs.service" /etc/systemd/system; }
   move_matt_daemon() { sudo mv -f "$HOME/CTCT/matt_damon.sh" /etc/; }
   closetabs_service_enable() {
     set -o pipefail
-    sudo systemctl daemon-reload >/dev/null
-    sudo systemctl enable --now closetabs >/dev/null
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now closetabs &>/dev/null
     set +o pipefail
   }
   service_setup=("closetabs_creation" "move_matt_daemon" "closetabs_service_enable")

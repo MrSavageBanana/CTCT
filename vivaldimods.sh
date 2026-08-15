@@ -26,9 +26,8 @@ load_browsers() {
   fi
 }
 load_browsers
-if [[ ! -e /etc/systemd/system/multi-user.target.wants/closetabs.service ]]; then
-  echo "Enabling closetabs.service"
-  systemctl enable --now closetabs
+if [[ ! -e /etc/systemd/system/CTCT.target.wants/closetabs.service ]]; then
+  systemctl enable --now closetabs &>/dev/null
 fi
 # --- VARIABLES ---
 FILE="/opt/vivaldi/resources/vivaldi/window.html"
