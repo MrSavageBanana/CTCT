@@ -38,7 +38,7 @@ declare -a reverse_hooks_setup=()
 user=$(whoami)
 # TODO: Attempt to fix the missing dependencies. DEPENDS ON: Auto Detect the system's package manager and use it instead of just pacman. At least Debian and Fedora
 check_dependencies() {
-  local deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" "awk" "dialog" "git" "grep" "curl" "chpasswd" "chattr" "systemctl" "grep" "tar" "diff" "find" "md5sum" "sort" "bash" "tr" "fold" "head" "shred" "whoami" "pacman" "basename" "pgrep" "kill" "xargs" "uniq" "file" "strace")
+  local deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" "awk" "dialog" "git" "grep" "curl" "chpasswd" "chattr" "systemctl" "grep" "tar" "diff" "find" "md5sum" "sort" "bash" "tr" "fold" "head" "shred" "whoami" "pacman" "basename" "pgrep" "kill" "xargs" "uniq" "file" "strace" "vivaldi")
   for dep in "${deps[@]}"; do
     if ! command -v "$dep" >/dev/null 2>&1; then
       missing_dependencies+=("$dep")
@@ -263,6 +263,7 @@ undo_create_pacman_d_dir() { sudo mv -f /etc/pacman.d "$HOME/.local/share/Trash/
 binaries_to_allow=("curl *" "jq *" "adb *" "bat *" "blkid *" "cat *" "chmod *" "docker-compose *" "du *" "flatpak *" "fuser *" "grep *" "journalctl *" "killall *" "ln *" "mv *" "nbfc *" "pkill *" "rm *" "rmpc *" "sensors-detect *" "sleep *" "ss *" "tailscale *" "tlp *" "tlp-stat *" "touch *" "ufw *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "tee *" "visudo --check" "sed -i '/@includedir/{/@includedir /etc/sudoers.d/!d;}' /etc/sudoers" "chattr +i /etc/sudoers" "chattr +i /etc/sudoers.d" "chattr +i /etc/sudoers.d/90-allowed-commands")
 undo_create_root() { echo_red "It is not safe for this script to undo the root password creation automatically. Check file for the root password to manually change."; }
 undo_create_local_bin_dir() { echo_red "This folder needs to be here. Not going to undo it"; }
+undo_create_share_applications_dir() { mv -f "$HOME/.local/share/applications/" "$HOME/.local/share/Trash/files"; }
 undo_include_sudoers_d_dir() { sudo mv -f /etc/sudoers.d/ "$HOME/.local/share/Trash/files/"; }
 undo_install_go() { mv /usr/local/go "$HOME/.local/share/Trash/files/"; }
 undo_curl_go() { mv "$HOME/CTCT/go" "$HOME/.local/share/Trash/files/"; }
@@ -299,6 +300,13 @@ correct_flag_helper() {
   set -o pipefail
   if [[ -e "$HOME/.local/share/applications/vivaldi-stable.desktop" ]]; then
     mv -f "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/"
+  fi
+  if [[ ! -e "$HOME/.local/share/applications/" ]]; then
+    if mkdir -pf "$HOME/.local/share/applications/"; then
+      reverse_operation+=("undo_create_share_applications_dir")
+    else
+      perform_rollback
+    fi
   fi
   mv -f "$HOME/CTCT/vivaldi-stable.desktop" "$HOME/.local/share/applications/"
   if [[ ! -d $HOME/.local/bin/ ]]; then
@@ -396,11 +404,11 @@ main() {
   cd CTCT || exit_cleanly
 
   # Service
-  closetabs_creation() { sudo mv -f "$HOME/CTCT/closetabs.service" /etc/systemd/system; }
+  closetabs_creation() { sudo mv -f "$HOME/CTCT/closetabs.service" /etc/systemd/system >/dev/null; }
   move_matt_daemon() { sudo mv -f "$HOME/CTCT/matt_damon.sh" /etc/; }
   closetabs_service_enable() {
     set -o pipefail
-    sudo systemctl daemon-reload
+    sudo systemctl daemon-reload >/dev/null
     sudo systemctl enable --now closetabs >/dev/null
     set +o pipefail
   }
@@ -444,7 +452,6 @@ main() {
     fi
   done
   # Javascript
-  sudo pacman -S --needed --noconfirm vivaldi >/dev/null
   cd "$HOME/CTCT/Custom_Vivaldi_JS(AI)" || exit_cleanly
   # This array needs to be upgraded by making all files in Custom_Vivaldi_JS be in it, regardless of name
   # If i decide to have the bundles of JS scripts as little packs, i will need to
@@ -569,7 +576,7 @@ main() {
 
   # Same as running sudo update-grub
   set -e
-  sudo cp /boot/grub/grub.cfg "/boot/grub/grub.cfg.bak.${backup_timestamp}" || exit_cleanly
+  sudo cp /boot/grub/grub.cfg "/boot/grub/grub.cfg.bak.${backup_timestamp}"
   set +e
 
   if sudo grub-mkconfig -o /boot/grub/grub.cfg "$@"; then
