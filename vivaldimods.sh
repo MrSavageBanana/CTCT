@@ -106,8 +106,8 @@ else
   done <<<"$missing"
 
   echo
-  chattr -ia /etc/hosts
+  chattr -a /etc/hosts
   echo "$missing" | sudo tee -a /etc/hosts >/dev/null
-  chattr +ia /etc/hosts
+  chattr +a /etc/hosts
   echo "Done."
 fi

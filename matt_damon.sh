@@ -106,6 +106,17 @@ read_desktop_files() {
 
 load_browsers() {
   mapfile -t browsers < <(read_desktop_files)
+  # readarray -t -O "${#browsers[@]}" browsers < "/etc/browsers.txt" # this will add duplicates likely but it isn't that big of a deal.
+  # This is from gemini and will remove duplicates
+  readarray -t browsers < <(
+    {
+      for item in "${browsers[@]}"; do
+        echo "$item"
+      done
+      cat "/etc/browsers.txt" 2>/dev/null
+    } | awk '!seen[$0]++'
+  )
+
   for b in "${browsers[@]}"; do
     b2=$(command -v "$b")
     b3=$(file --mime-type -bL "$b2" | awk '{split($NF, a, "/"); print a[1]}')
