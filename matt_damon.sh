@@ -125,7 +125,7 @@ load_browsers() {
       b4=$(strace -e trace=execve "$b2" --version |& awk -F'"' '/^execve/ && /0$/ { n = split($2, arr, "/"); result = arr[n] } END { if (result) print result }')
       browsers+=("$b4")
     elif [[ $b3 = 'application' ]]; then
-      browsers+=("$b3")
+      browsers+=("$b2")
     fi
   done
   for bro in "${browsers[@]}"; do
