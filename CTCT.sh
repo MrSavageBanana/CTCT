@@ -6,17 +6,18 @@
 # contemplating whether to create different script files and source them. This script is getting messy.
 # Checks starts
 # I am contemplating whether to add a check for existing files that might be on the user's computer and to check for them and tell the user to deal with them or if they want them to be overwritten and what would be overwritten. So far in the script, these are the files and directories that will be overwritten if they already exist
-exit         # in case this is accidentally ran. I don't want to ruin my computer. Remove this when needed and the shellcheck lines above
+# exit         # in case this is accidentally ran. I don't want to ruin my computer. Remove this when needed and the shellcheck lines above
 echo_red() { # for things that needs the users attention
   builtin echo -e "\033[38;2;255;0;0m >>> $* <<< \033[0m"
 }
 if [ ! $# -eq 0 ]; then
   echo_red "Remove arguments before running please"
+  exit 1
 fi
 
 if [ "$EUID" -eq 0 ]; then
   echo_red "Don't run as root. You will be prompted for sudo privileges."
-  exit
+  exit 1
 fi
 
 exec 9>/tmp/myscript.lock

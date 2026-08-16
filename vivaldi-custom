@@ -1,5 +1,5 @@
 #!/bin/bash
 /usr/bin/vivaldi-stable \
   --remote-debugging-port=9222 \
-  --profile-directory="Default"
+  --profile-directory="Default" \
   "$@"
