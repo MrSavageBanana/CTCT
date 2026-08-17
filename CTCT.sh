@@ -1,19 +1,60 @@
 #!/bin/bash
+# contemplating whether to create different script files and source them. This script is getting messy.
 # shellcheck disable=SC2034
+# shellcheck disable=SC1090
 # For disabling the messages when the exit message is there:
 # shellcheck disable=SC2317
 # shellcheck disable=SC2329
-# contemplating whether to create different script files and source them. This script is getting messy.
-# Checks starts
-# I am contemplating whether to add a check for existing files that might be on the user's computer and to check for them and tell the user to deal with them or if they want them to be overwritten and what would be overwritten. So far in the script, these are the files and directories that will be overwritten if they already exist
-# exit         # in case this is accidentally ran. I don't want to ruin my computer. Remove this when needed and the shellcheck lines above
+exit         # if this is accidentally ran. I don't want to ruin my computer. Remove this when needed and the shellcheck lines above
 echo_red() { # for things that needs the users attention
   builtin echo -e "\033[38;2;255;0;0m >>> $* <<< \033[0m"
 }
-if [ ! $# -eq 0 ]; then
-  echo_red "Remove arguments before running please"
-  exit 1
+countdown() {
+  secs="$1"
+  while [ "$secs" -ge 0 ]; do
+    echo -ne "Auto Continuing in $secs seconds...\033[0K\r"
+    if read -t 1 -r _; then
+      break
+    fi
+    ((secs--))
+  done
+}
+idk_a_good_name() {
+  local -n chosen_array="$1"
+  local chosen_item
+  echo_red "${#chosen_array[@]}" "$2!:"
+  for chosen_item in "${chosen_array[@]}"; do
+    echo "$chosen_item"
+  done
+}
+immuting() {
+  local -n chosen_array="$1"
+  local chosen_leading_path="$2"
+  local chosen_item
+  for chosen_item in "${chosen_array[@]}"; do
+    if sudo chattr +i "$chosen_leading_path$chosen_item"; then
+      reverse_operation+=("reverse_immute" "$chosen_leading_path$chosen_item")
+    else
+      perform_rollback
+    fi
+  done
+}
+SCRIPT_NAME=${BASH_SOURCE[0]##*/}
+SCRIPT_DIR=$(
+  if cd -- "${BASH_SOURCE[0]%/*}" 2>/dev/null; then
+    pwd
+  else
+    pwd
+  fi
+)
+FILE_PATH="$SCRIPT_DIR/$SCRIPT_NAME"
+SHORT="vfP:pS:b:dsh"
+LONG="validate,fix,privileges:,print-privileges,sites:,blocklist:,decrypt,show-password,help"
+if ! PARSED=$(getopt --options "$SHORT" --longoptions "$LONG" --name "$0" -- "$@"); then
+  echo "Try '$FILE_PATH --help' for more information"
+  exit 2
 fi
+eval set -- "$PARSED"
 
 if [ "$EUID" -eq 0 ]; then
   echo_red "Don't run as root. You will be prompted for sudo privileges."
@@ -36,10 +77,16 @@ declare -a service_setup=()
 declare -a reverse_service_setup=()
 declare -a hooks_setup=()
 declare -a reverse_hooks_setup=()
+declare -a reverse_operation=()
+declare -a CUSTOM_SITES=()
+declare -a CUSTOM_BLOCKLISTS=()
 user=$(whoami)
+export LC_ALL=C
+trap 'perform_rollback' ERR
+trap "" SIGINT SIGTSTP SIGQUIT # can't risk the user exiting the script and messing with things mid through
 # TODO: Attempt to fix the missing dependencies. DEPENDS ON: Auto Detect the system's package manager and use it instead of just pacman. At least Debian and Fedora
+deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" "awk" "dialog" "git" "grep" "curl" "chpasswd" "chattr" "systemctl" "grep" "tar" "diff" "find" "md5sum" "sort" "bash" "tr" "fold" "head" "shred" "whoami" "basename" "pgrep" "kill" "xargs" "uniq" "file" "strace" "vivaldi" "pacman")
 check_dependencies() {
-  local deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" "awk" "dialog" "git" "grep" "curl" "chpasswd" "chattr" "systemctl" "grep" "tar" "diff" "find" "md5sum" "sort" "bash" "tr" "fold" "head" "shred" "whoami" "basename" "pgrep" "kill" "xargs" "uniq" "file" "strace" "vivaldi")
   for dep in "${deps[@]}"; do
     if ! command -v "$dep" >/dev/null 2>&1; then
       missing_dependencies+=("$dep")
@@ -48,77 +95,44 @@ check_dependencies() {
   if [[ "${#missing_dependencies[@]}" -eq 0 ]]; then
     echo "No Dependencies Missing"
   elif [[ "${#missing_dependencies[@]}" -ne 0 ]]; then
-    echo_red "${#missing_dependencies[@]}" 'missing dependencies!:'
-    for missing_dependency in "${missing_dependencies[@]}"; do
-      echo "$missing_dependency"
-    done
-    exit
-  else
-    echo_red "missing_dependencies array is not working. Array:"
-    "${missing_dependencies[@]}"
+    idk_a_good_name "missing_dependencies" 'missing dependencies'
     exit
   fi
-
 }
-check_dependencies
-# we are unable to warn the users about the JS files that may be overwritten unless we ping the github repo (which we will already do when we clone) to check what files might be overwritten
-potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/systemd/system/CTCT.target.wants/closetabs.service" "/etc/matt_damon.sh" "/etc/browsers.txt" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "/etc/sudoers.d/90-allowed-commands" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/.local/share/Trash/files/vivaldimods_output.txt" "$HOME/.local/share/Trash/files/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}" "$HOME/.local/share/Trash/files/tle")
-for file in "${potentially_overwritten_files[@]}"; do
-  if [[ -e "$file" ]]; then
-    overwritten_files+=("$file")
-  fi
-done
-if [[ "${#overwritten_files[@]}" -eq 0 ]]; then
-  if command -v vivaldi >/dev/null; then # checks if vivaldi is installed. if it is, there may be some js files. if not, there is no reason to suspect
-    echo "No files will be overwritten"
-    echo_red "Also check for JS files"
-    echo "Use this time to check for JS files. Press enter when checked"
-    secs=90
-    while [ "$secs" -ge 0 ]; do
-      echo -ne "Auto Continuing in $secs seconds...\033[0K\r"
-
-      if read -t 1 -r _; then
-        break
-      fi
-
-      ((secs--))
-    done
-  fi
-elif [[ "${#overwritten_files[@]}" -ne 0 ]]; then
-  echo_red "${#overwritten_files[@]}" 'overwritten files!:'
-  for overwritten_file in "${overwritten_files[@]}"; do
-    echo "$overwritten_file"
+check_overwritten() {
+  # we are unable to warn the users about the JS files that may be overwritten unless we ping the github repo (which we will already do when we clone) to check what files might be overwritten
+  potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/systemd/system/CTCT.target.wants/closetabs.service" "/etc/matt_damon.sh" "/etc/browsers.txt" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "/etc/sudoers.d/90-allowed-commands" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/.local/share/Trash/files/vivaldimods_output.txt" "$HOME/.local/share/Trash/files/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}" "$HOME/.local/share/Trash/files/tle")
+  for file in "${potentially_overwritten_files[@]}"; do
+    if [[ -e "$file" ]]; then
+      overwritten_files+=("$file")
+    fi
   done
-  if command -v vivaldi >/dev/null; then # checks if vivaldi is installed. if it is, there may be some js files. if not, there is no reason to suspect
-    echo_red "Also check for JS files"
+  if [[ "${#overwritten_files[@]}" -eq 0 ]]; then
+    if command -v vivaldi >/dev/null; then # checks if vivaldi is installed. if it is, there may be some js files. if not, there is no reason to suspect
+      echo "No files will be overwritten"
+      echo_red "Also check for JS files"
+      echo "Use this time to check for JS files. Press enter when checked"
+      countdown 90
+    fi
+  elif [[ "${#overwritten_files[@]}" -ne 0 ]]; then
+    idk_a_good_name "overwritten_files" "overwritten files"
+    if command -v vivaldi >/dev/null; then # checks if vivaldi is installed. if it is, there may be some js files. if not, there is no reason to suspect
+      echo_red "Also check for JS files"
+    fi
+    exit
   fi
-  exit
-else
-  echo_red "overwritten_files array is not working. Array:"
-  echo "${overwritten_files[@]}"
-  exit
-fi
 
-potentially_overwritten_directories=("$HOME/CTCT/" "/etc/systemd/system/CTCT.target.wants" "$HOME/.local/share/Trash/files/hooks.bin" "$HOME/.local/share/Trash/files/hooks" "$HOME/.local/share/Trash/files/etc" "$HOME/.local/share/Trash/files/pacman.d" "$HOME/.local/share/Trash/files/sudoers.d" "$HOME/.local/share/Trash/files/go" "$HOME/.local/share/Trash/files/CTCT")
-for dir in "${potentially_overwritten_directories[@]}"; do
-  if [[ -e "$dir" ]]; then
-    overwritten_dirs+=("$dir")
-  fi
-done
-if [[ "${#overwritten_dirs[@]}" -eq 0 ]]; then
-  true
-elif [[ "${#overwritten_dirs[@]}" -ne 0 ]]; then
-  echo_red "${#overwritten_dirs[@]}" 'overwritten dirs!:'
-  for overwritten_dir in "${overwritten_dirs[@]}"; do
-    echo "$overwritten_dir"
+  potentially_overwritten_directories=("$HOME/CTCT/" "/etc/systemd/system/CTCT.target.wants" "$HOME/.local/share/Trash/files/hooks.bin" "$HOME/.local/share/Trash/files/hooks" "$HOME/.local/share/Trash/files/etc" "$HOME/.local/share/Trash/files/pacman.d" "$HOME/.local/share/Trash/files/sudoers.d" "$HOME/.local/share/Trash/files/go" "$HOME/.local/share/Trash/files/CTCT")
+  for dir in "${potentially_overwritten_directories[@]}"; do
+    if [[ -e "$dir" ]]; then
+      overwritten_dirs+=("$dir")
+    fi
   done
-  exit
-else
-  echo_red "overwritten_dirs array is not working. Array:"
-  echo "${overwritten_dirs[@]}"
-  exit
-fi
-
+  if [[ "${#overwritten_dirs[@]}" -ne 0 ]]; then
+    idk_a_good_name "overwritten_dirs" "overwritten dirs"
+    exit
+  fi
+}
 grab_dir_state() {
   local state_name="$1"
   if [[ -e "$HOME/$state_name" ]]; then
@@ -149,8 +163,6 @@ grab_dir_state() {
     echo "Finished capturing filesystem state"
   fi
 }
-export LC_ALL=C
-declare -a reverse_operation=()
 perform_rollback() {
   trap - ERR # stops running perform_rollback if perform_rollback fails.
   echo_red "[!] ERROR DETECTED. INITIATING ROLLBACK..."
@@ -187,16 +199,7 @@ perform_rollback() {
 
   if [[ -e "$HOME/oldstate.txt" && -e "$HOME/newstate.txt" ]]; then
     echo "Ready. Click enter to view diff"
-    secs=90
-    while [ "$secs" -ge 0 ]; do
-      echo -ne "Auto Continuing in $secs seconds...\033[0K\r"
-
-      if read -t 1 -r _; then
-        break
-      fi
-
-      ((secs--))
-    done
+    countdown 90
     mid=$((COLUMNS / 2))
     string_length_of_oldstate=12
     pad=$((mid - string_length_of_oldstate))
@@ -212,10 +215,164 @@ perform_rollback() {
   fi
   echo -e "\033[38;2;124;252;0m Rollback complete \033[0m"
   exit 1
-
 }
-trap 'perform_rollback' ERR
-trap "" SIGINT SIGTSTP SIGQUIT # can't risk the user exiting the script and messing with things mid through
+fix_overwritten() {
+  all_potentially_problomatic_files=(
+    "${overwritten_files[@]}"
+    "${important_files[@]}"
+    "${important_files2[@]}"
+  )
+  for f in "${all_potentially_problomatic_files[@]}"; do
+    if [[ -e "$f" ]]; then
+      chattr -ia "$f" &>/dev/null
+    fi
+  done
+  if [[ ! -e "$HOME/.local/share/Trash/files/" ]]; then
+    mkdir -p "$HOME/.local/share/Trash/files/"
+  fi
+  for f in "${overwritten_files[@]}"; do
+    if [[ -e "$f" ]]; then
+      mv -f "$f" "$HOME/.local/share/Trash/files/"
+    fi
+  done
+  # Deletes lines with the username and password
+  sudo sed -i.bak -e '/linuxconfig/d' -e '/grub.pbkdf2.sha512/d' /etc/grub.d/40_custom
+  # unrestrict Grub
+  sudo sed -i 's/--class os\b\( --unrestricted\)*/--class os --unrestricted/g' /etc/grub.d/10_linux
+  sudo grub-mkconfig -o /boot/grub/grub.cfg
+  echo_red "edit /etc/hosts yourself"
+  echo_red "move leftover JS from '/opt/vivaldi/resources/vivaldi/' yourself"
+}
+fix_dependencies() {
+  for dep in "${deps[@]}"; do
+    if ! command -v "$dep" >/dev/null 2>&1; then
+      missing_dependencies+=("$dep")
+    fi
+  done
+  if [[ "${#missing_dependencies[@]}" -eq 0 ]]; then
+    echo "No Dependencies Missing"
+  elif [[ "${#missing_dependencies[@]}" -ne 0 ]]; then
+    for missing_dependency in "${missing_dependencies[@]}"; do
+      echo "Installing $missing_dependency" # this is neccessary because the user might not know what is being downloaded
+      sudo pacman -S --noconfirm "$missing_dependency"
+    done
+  fi
+  if [[ "${#missing_dependencies[@]}" -eq 0 ]]; then
+    echo "No Dependencies Missing"
+  elif [[ "${#missing_dependencies[@]}" -ne 0 ]]; then
+    echo "Couldn't fix dependencies"
+    idk_a_good_name "missing_dependencies" "missing dependencies"
+    exit
+  fi
+}
+anchor() {
+  set -o nounset
+  local inserts="$1"
+  local anchor="$2"
+  local instance="$3"
+  local file="$4"
+  if grep -qF "$inserts" "$FILE"; then
+    echo_red "$inserts is a DUPLICATE ENTRY!"
+  else
+    # change the 1 to another number to get that instance of the $inserts in $FILE
+    awk -v anchor="$anchor" -v insert="\n\t\"$inserts\"" -v n="$instance" '
+    index($0, anchor) > 0 {
+    count++
+    if (count == n) {
+    pos = index($0, anchor)
+    $0 = substr($0, 1, pos + length(anchor) - 1) insert substr($0, pos + length(anchor))
+    }
+    }
+    1' "$FILE" >tmp.txt && mv tmp.txt "$FILE"
+    echo "Inserted $inserts. $SCRIPT_NAME has been updated"
+  fi
+  set +o nounset
+}
+edit_privileges() {
+  set -o nounset
+  local INSERTS="$1"
+  local ERROR=0
+  if [[ "$INSERTS" == *" "* ]]; then
+    echo "REMOVE SPACES"
+    ((ERROR++))
+  fi
+  if [[ "$INSERTS" != *"*"* ]]; then
+    INSERTS="$INSERTS *"
+  fi
+  if [[ "$INSERTS" == *"/"* ]]; then
+    echo "REMOVE SLASHES"
+    ((ERROR++))
+  fi
+  if [[ "$ERROR" -gt 0 ]]; then
+    echo "FIX ERRORS THEN RETRY AGAIN"
+    exit
+  fi
+  anchor "$INSERTS" "binaries_to_allow=(" "1" "$FILE_PATH"
+  echo_red "Run $FILE_PATH (-p | --print_privileges) to confirm changes."
+}
+print_binaries_to_allow() {
+  echo "All Binaries Allowed:"
+  echo "${binaries_to_allow[@]}"
+}
+edit_sites() {
+  local FILE="$HOME/CTCT/vivaldimods.sh"
+  if [[ ! -e $FILE ]]; then
+    perform_rollback
+  fi
+  for site in "${CUSTOM_SITES[@]}"; do
+    anchor "$site" "custom_websites=(" "1" "$FILE"
+  done
+}
+edit_blocklists() {
+  local FILE="$HOME/CTCT/vivaldimods.sh"
+  if [[ ! -e $FILE ]]; then
+    perform_rollback
+  fi
+  for blocklist in "${CUSTOM_BLOCKLISTS[@]}"; do
+    anchor "$blocklist" "extra_mirrors=(" "1" "$FILE"
+  done
+}
+print_help() {
+  echo -e "\033[1mUsage:\033[0m"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-v\033[0m | \033[1m--validate\033[0m"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-f\033[0m | \033[1m--fix\033[0m"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-p\033[0m | \033[1m--print-privileges\033[0m"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-P\033[0m | \033[1m--privileges\033[0m PRIVILEGE"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-d\033[0m \033[1m-s\033[0m"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m [\033[1m-S\033[0m | \033[1m--sites\033[0m SITE]... [\033[1m-b\033[0m | \033[1m--blocklist\033[0m BLOCKLIST]..."
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-h\033[0m | \033[1m--help\033[0m"
+  echo -e "\n\033[1mOPTIONS\033[0m"
+  echo -e "  \033[1m-v, --validate\033[0m\n      check that the script can run without overwriting files or missing dependencies"
+  echo -e "  \033[1m-f, --fix\033[0m\n      download any missing dependencies and move overwritten files to $HOME/.local/share/Trash/files/"
+  echo -e "  \033[1m-P, --privileges\033[0m\n      add binary you want to be able to run with sudo and exit"
+  echo -e "  \033[1m-p, --print-privileges\033[0m\n      print privileges to screen and exit"
+  echo -e "  \033[1m-S, --sites\033[0m\n      add sites to be blocked"
+  echo -e "  \033[1m-b, --blocklist\033[0m\n      add a stevenblack blocklist to add to hosts"
+  echo -e "  \033[1m-d, --decrypt\033[0m\n      decrypt password and prompt to change it"
+  echo -e "  \033[1m-s, --show-password\033[0m\n      to be used with --decrypt. shows new password user types when changing"
+  echo -e "  \033[1m-h, --help\033[0m\n      show this message and exit"
+}
+
+decrypt() {
+  "$HOME/go/bin/tle" --decrypt -o GRUB_PASSWORD-KEEP_SAFE.txt GRUB_PASSWORD-KEEP_SAFE.lock
+  local old_password
+  old_password=$(awk 'NR==2 {print; exit}' "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt")
+  echo -e "\033[38;2;124;252;0m Password=$old_password \033[0m"
+  if [ "$SHOW_PASSWORD" == true ]; then
+    set +x
+    read -pr 'Enter new password for Root: ' new_password
+
+  else
+    read -spr 'Enter new password for Root: ' new_password
+    set +x
+  fi
+  echo "root:$new_password" | sudo chpasswd
+  if [[ "$restore_state" == "set -o xtrace" ]]; then
+    set -x
+  fi
+}
+
 # Checks Ends
 # Rollback Functions Start
 undo_closetabs_creation() { sudo mv -f /etc/systemd/system/closetabs.service "$HOME/CTCT"; }
@@ -261,7 +418,9 @@ undo_restrict_grub() { sudo sed -i "s/submenu_id_option 'gnulinux-advanced/menue
 # undo_create_grub2() { rm grub2.hook; }
 undo_create_etc_dir() { sudo mv -f /etc "$HOME/.local/share/Trash/files/"; } # this only removes etc if you didn't have it before
 undo_create_pacman_d_dir() { sudo mv -f /etc/pacman.d "$HOME/.local/share/Trash/files/"; }
-binaries_to_allow=("curl *" "jq *" "adb *" "bat *" "blkid *" "cat *" "chmod *" "docker-compose *" "du *" "flatpak *" "fuser *" "grep *" "journalctl *" "killall *" "ln *" "mv *" "nbfc *" "pkill *" "rm *" "rmpc *" "sensors-detect *" "sleep *" "ss *" "tailscale *" "tlp *" "tlp-stat *" "touch *" "ufw *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "tee *" "visudo --check" "sed -i '/@includedir/{/@includedir /etc/sudoers.d/!d;}' /etc/sudoers" "chattr +i /etc/sudoers" "chattr +i /etc/sudoers.d" "chattr +i /etc/sudoers.d/90-allowed-commands")
+# don't add all of these binaries on one line. add no text on the same line as the "binaries_to_allow=(" line. This will break the '-P, --privileges' option
+binaries_to_allow=(
+  "curl *" "jq *" "adb *" "bat *" "blkid *" "cat *" "chmod *" "docker-compose *" "du *" "flatpak *" "fuser *" "grep *" "journalctl *" "killall *" "ln *" "mv *" "nbfc *" "pkill *" "rm *" "rmpc *" "sensors-detect *" "sleep *" "ss *" "tailscale *" "tlp *" "tlp-stat *" "touch *" "ufw *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "tee *" "visudo --check" "sed -i '/@includedir/{/@includedir /etc/sudoers.d/!d;}' /etc/sudoers" "chattr +i /etc/sudoers" "chattr +i /etc/sudoers.d" "chattr +i /etc/sudoers.d/90-allowed-commands")
 undo_create_root() { echo_red "It is not safe for this script to undo the root password creation automatically. Check file for the root password to manually change."; }
 undo_create_local_bin_dir() { echo_red "This folder needs to be here. Not going to undo it"; }
 undo_create_share_applications_dir() { mv -f "$HOME/.local/share/applications/" "$HOME/.local/share/Trash/files"; }
@@ -274,7 +433,6 @@ undo_chmod_90-allowed-commands() { sudo chmod 0644 /etc/sudoers.d/90-allowed-com
 undo_chmod_vivaldi_custom() { chmod -x "$HOME/.local/bin/vivaldi-custom"; }
 reverse_trash_non_90-allowed-commands-files() {
   local "$1"=file
-  local file
   file=$(echo "$1" | awk -F "/" '{print $NF}')
   sudo mv ~/.local/share/Trash/files/"$file" /etc/sudoers.d/
 }
@@ -375,20 +533,23 @@ affected_dirs=(
   "/usr/local"
 )
 # References End
-set -eEu
-# Start of script
-# I am contemplating simplifying the script by turning the \
-# for commands in "${commands[@]}"
-# if <command>; then
-# reverse_operation+=("<reverse_command>")
-# else
-#	perform_rollback
-# fi
-
-echo "Checking that user can run sudo"
-sudo -vk || exit_cleanly # to ensure that the user has sudo privileges and can run sudo?. Probably will make this more better by ensuring the user can run sudo on all commands neccessary for this script to run
 
 main() {
+  check_dependencies
+  check_overwritten
+  set -eEu
+  # Start of script
+  # I am contemplating simplifying the script by turning the \
+  # for commands in "${commands[@]}"
+  # if <command>; then
+  # reverse_operation+=("<reverse_command>")
+  # else
+  #	perform_rollback
+  # fi
+
+  echo "Checking that user can run sudo"
+  sudo -vk || exit_cleanly # to ensure that the user has sudo privileges and can run sudo?. Probably will make this more better by ensuring the user can run sudo on all commands neccessary for this script to run
+
   echo "Grabbing current filesystem state"
   grab_dir_state oldstate.txt
   # this directory is referenced so much that i decided to just check for it's existency almost immediately
@@ -403,7 +564,12 @@ main() {
   cd "$HOME"
   git clone -q https://github.com/MrSavageBanana/CTCT.git
   cd CTCT || exit_cleanly
-
+  if [[ $EDIT_SITE == "true" ]]; then
+    edit_sites
+  fi
+  if [[ $EDIT_BLOCKLIST == "true" ]]; then
+    edit_blocklists
+  fi
   # Service
   closetabs_creation() { sudo mv -f "$HOME/CTCT/closetabs.service" /etc/systemd/system; }
   move_matt_daemon() { sudo mv -f "$HOME/CTCT/matt_damon.sh" /etc/; }
@@ -607,29 +773,11 @@ main() {
   # end of grub setup
   echo_red "Select a date to stop focussing..."
   echo "Click enter to continue"
-  secs=10
-  while [ "$secs" -ge 0 ]; do
-    echo -ne "Auto Continuing in $secs seconds...\033[0K\r"
-
-    if read -t 1 -r _; then
-      break
-    fi
-
-    ((secs--))
-  done
+  countdown 10
 
   selected_end_date=$(dialog --clear --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
   echo "You picked $selected_end_date. Click enter to continue"
-  secs=10
-  while [ "$secs" -ge 0 ]; do
-    echo -ne "Auto Continuing in $secs seconds...\033[0K\r"
-
-    if read -t 1 -r _; then
-      break
-    fi
-
-    ((secs--))
-  done
+  countdown 10
 
   echo_red "Select a time to end the script..."
   selected_end_time=$(dialog --erase-on-exit --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
@@ -653,16 +801,7 @@ main() {
     if [[ ! -s "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" ]]; then
       echo_red round "$round" is in the past. Try again
       echo "Click enter to continue"
-      secs=10
-      while [ "$secs" -ge 0 ]; do
-        echo -ne "Auto Continuing in $secs seconds...\033[0K\r"
-
-        if read -t 1 -r _; then
-          break
-        fi
-
-        ((secs--))
-      done
+      countdown 10
       selected_end_date
     else
       reverse_operation+=("undo_tle_lock")
@@ -674,21 +813,9 @@ main() {
   fi
 
   # Immutable File; last step
-  for important_file in "${important_files[@]}"; do
-    if sudo chattr +i "$important_file"; then
-      reverse_operation+=("reverse_immute $important_file")
-    else
-      perform_rollback
-    fi
-  done
+  immuting "important_files"
 
-  for JS_SCRIPT in "${applied_vivaldi_mods[@]}"; do
-    if sudo chattr +i /opt/vivaldi/resources/vivaldi/"$JS_SCRIPT"; then
-      reverse_operation+=("reverse_immute /opt/vivaldi/resources/vivaldi/$JS_SCRIPT")
-    else
-      perform_rollback
-    fi
-  done
+  immuting "applied_vivaldi_mods" "/opt/vivaldi/resources/vivaldi/"
 
   for important_file_to_append in "${important_files_to_append[@]}"; do
     if sudo chattr +a "$important_file_to_append"; then
@@ -721,8 +848,6 @@ main() {
       true
     elif sudo grep -qF "$user ALL=(root) NOPASSWD: /usr/bin/$binaries" /etc/sudoers.d/90-allowed-commands; then
       true
-    else
-      perform_rollback
     fi
   done
 
@@ -764,14 +889,125 @@ main() {
     fi
   done
 
-  for important_file2 in "${important_files2[@]}"; do
-    if sudo chattr +i "$important_file2"; then
-      reverse_operation+=("reverse_immute $important_file2")
-    else
-      perform_rollback
-    fi
-  done
+  immuting "important_files2"
   mv "$HOME/CTCT" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}"
   echo -e "\033[38;2;124;252;0m Completed Script \033[0m"
 }
+
+EDIT_SITE=false
+SHOW_PASSWORD=false
+VALIDATEOPT=0
+FIXOPT=0
+PRIVILEGEOPT=0
+PRINTPRIVILEGESOPT=0
+SITESOPT=0
+BLOCKLISTOPT=0
+DECRYPTOPT=0
+SHOWPASSWORDOPT=0
+EDIT_BLOCKLIST=false
+
+while true; do
+  case "$1" in
+  -v | --validate)
+    VALIDATEOPT=1
+    shift
+    ;;
+  -f | --fix)
+    FIXOPT=1
+    shift
+    ;;
+  -P | --privileges)
+    PRIVILEGEOPT=1
+    PRIVILEGE_ARG="$2"
+    shift 2
+    ;;
+  -p | --print-privileges)
+    PRINTPRIVILEGESOPT=1
+    shift
+    ;;
+  -S | --sites)
+    SITESOPT=1
+    EDIT_SITE=true
+    CUSTOM_SITES+=("$2")
+    shift 2
+    ;;
+  -b | --blocklist)
+    BLOCKLISTOPT=1
+    EDIT_BLOCKLIST=true
+    CUSTOM_BLOCKLISTS+=("$2")
+    shift 2
+    ;;
+  -d | --decrypt)
+    DECRYPTOPT=1
+    shift
+    ;;
+  -s | --show-password)
+    SHOWPASSWORDOPT=1
+    SHOW_PASSWORD=true
+    shift
+    ;;
+  -h | --help)
+    print_help
+    exit
+    ;;
+  --)
+    shift
+    break
+    ;;
+  *)
+    break
+    ;;
+  esac
+done
+# Claude's idea on how to ensure the flags are standalone without writing the same code for each standalone flag
+total_set=0
+for opt in "$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT" "$SITESOPT" "$BLOCKLISTOPT" "$DECRYPTOPT" "$SHOWPASSWORDOPT"; do
+  ((opt == 1)) && ((total_set++))
+done
+standalone_values=("$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT")
+standalone_names=("--validate" "--fix" "--privileges" "--print-privileges")
+for i in "${!standalone_values[@]}"; do
+  if [[ "${standalone_values[$i]}" -eq 1 && $total_set -gt 1 ]]; then
+    echo "${standalone_names[$i]} is meant to be used on it's own"
+    exit 2
+  fi
+done
+if [[ $SHOWPASSWORDOPT -eq 1 && $DECRYPTOPT -eq 0 ]]; then
+  echo "--decrypt is to be used with --show-password"
+  exit 2
+fi
+
+other_opts_set=0
+for opt in "$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT" "$SITESOPT" "$BLOCKLISTOPT"; do
+  ((opt == 1)) && ((other_opts_set++))
+done
+if [[ $DECRYPTOPT -eq 1 && $other_opts_set -gt 0 ]]; then
+  echo_red "--decrypt (with optional --show-password) is to be used on its own"
+  exit 2
+fi
+
+if [[ $VALIDATEOPT -eq 1 ]]; then
+  check_dependencies
+  check_overwritten
+  exit
+fi
+if [[ $FIXOPT -eq 1 ]]; then
+  fix_overwritten
+  fix_dependencies
+  exit
+fi
+if [[ $PRIVILEGEOPT -eq 1 ]]; then
+  edit_privileges "$PRIVILEGE_ARG"
+  exit
+fi
+if [[ $PRINTPRIVILEGESOPT -eq 1 ]]; then
+  print_binaries_to_allow
+  exit
+fi
+if [[ $DECRYPTOPT -eq 1 ]]; then
+  decrypt
+  exit
+fi
+
 main
+exit

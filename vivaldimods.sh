@@ -26,9 +26,12 @@ load_browsers() {
   fi
 }
 load_browsers
-if [[ ! -e /etc/systemd/system/CTCT.target.wants/closetabs.service ]]; then
-  systemctl enable --now closetabs &>/dev/null
-fi
+enable_closetabs() {
+  if [[ ! -e /etc/systemd/system/CTCT.target.wants/closetabs.service ]]; then
+    systemctl enable --now closetabs &>/dev/null
+  fi
+}
+enable_closetabs
 # --- VARIABLES ---
 FILE="/opt/vivaldi/resources/vivaldi/window.html"
 ANCHOR="<body>"
@@ -63,6 +66,15 @@ done
 
 echo "${#DUPLICATE_MODS[@]}" 'mods are already indented.'
 # Check that /etc/hosts isn't missing anything from the mirror, and add what's missing
+extra_mirrors=(
+)
+cleanup() {
+  curl -fSs --connect-timeout 20 --max-time 30 "$1"
+  sed 's/#.*//' |
+    sed 's/[[:space:]]*$//' |
+    sed '/^[[:space:]]*$/d' |
+    sort
+}
 mirror=$(curl -fSs --connect-timeout 20 --max-time 30 https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/gambling-porn-only/hosts |
   sed 's/#.*//' |
   sed 's/[[:space:]]*$//' |
@@ -77,20 +89,17 @@ current=$(awk '/0.0.0.0/ { count++ } count >= 2' /etc/hosts |
 
 # adds safesearch
 custom_websites=(
-  "216.239.38.120 www.google.com"
-  "216.239.38.120 google.com"
-  "216.239.38.120 www.youtube.com"
-  "216.239.38.120 m.youtube.com"
-  "216.239.38.120 youtubei.googleapis.com"
-  "216.239.38.120 youtube.googleapis.com"
-  "216.239.38.120 www.youtube-nocookie.com"
-  "204.79.197.220 www.bing.com"
-  "204.79.197.220 bing.com"
 )
 # Lines marked with < are in mirror but not in current
 for custom_websites_to_block in "${custom_websites[@]}"; do
   if ! grep -qF "$custom_websites_to_block" /etc/hosts; then
     mirror="$mirror"$'\n'"$custom_websites_to_block" # gemini told me this is how to make each result on a new line
+  fi
+done
+for extra_mirror in "${extra_mirrors[@]}"; do
+  extra_mirror=$(cleanup "$extra_mirror")
+  if ! grep -qF "$extra_mirror" /etc/hosts; then
+    mirror="$mirror"$'\n'"$extra_mirror"
   fi
 done
 missing=$(diff <(echo "$mirror") <(echo "$current") | grep '^<' | sed 's/^< //')
