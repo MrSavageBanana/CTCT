@@ -113,7 +113,7 @@ check_overwritten() {
     if command -v vivaldi >/dev/null; then # checks if vivaldi is installed. if it is, there may be some js files. if not, there is no reason to suspect
       echo "No files will be overwritten"
       echo_red "Also check for JS files"
-      echo "Use this time to check for JS files. Press enter when checked"
+      echo "Use this time to check for JS files at '/opt/vivaldi/resources/vivaldi/'. Press enter when checked"
       countdown 90
     fi
   elif [[ "${#overwritten_files[@]}" -ne 0 ]]; then
@@ -262,8 +262,8 @@ fix_dependencies() {
     done
     echo_red "Run $FILE_PATH (-v | --validate) to confirm changes."
   fi
-  echo_red "edit /etc/hosts yourself" # since fix_dependencies is always run with fix_overwritten, just put the fix_overwritten messages here
-  echo_red "move leftover JS from '/opt/vivaldi/resources/vivaldi/' yourself"
+  echo_red "remove entries from /etc/hosts yourself" # since fix_dependencies is always run with fix_overwritten, just put the fix_overwritten messages here
+  echo_red "move leftover JS from /opt/vivaldi/resources/vivaldi/ yourself"
 }
 anchor() {
   set -o nounset
@@ -271,10 +271,10 @@ anchor() {
   local anchor="$2"
   local instance="$3"
   local file="$4"
-  if grep -qF "$inserts" "$FILE"; then
+  if grep -qF "$inserts" "$file"; then
     echo_red "$inserts is a DUPLICATE ENTRY!"
   else
-    # change the 1 to another number to get that instance of the $inserts in $FILE
+    # change the 1 to another number to get that instance of the $inserts in $file
     awk -v anchor="$anchor" -v insert="\n\t\"$inserts\"" -v n="$instance" '
     index($0, anchor) > 0 {
     count++
@@ -283,8 +283,8 @@ anchor() {
     $0 = substr($0, 1, pos + length(anchor) - 1) insert substr($0, pos + length(anchor))
     }
     }
-    1' "$FILE" >tmp.txt && mv tmp.txt "$FILE"
-    echo "Inserted $inserts. $SCRIPT_NAME has been updated"
+    1' "$file" >tmp.txt && mv tmp.txt "$file"
+    echo "Inserted $inserts. $file has been updated"
   fi
   set +o nounset
 }
@@ -307,7 +307,7 @@ edit_privileges() {
     echo "FIX ERRORS THEN RETRY AGAIN"
     exit
   fi
-  anchor "$INSERTS" "binaries_to_allow=(" "1" "$FILE_PATH"
+  anchor "$INSERTS" "binaries_to_allow=(" "4" "$FILE_PATH"
   echo_red "Run $FILE_PATH (-p | --print_privileges) to confirm changes."
 }
 print_binaries_to_allow() {
@@ -431,7 +431,7 @@ undo_restrict_grub() { sudo sed -i "s/submenu_id_option 'gnulinux-advanced/menue
 # undo_create_grub2() { rm grub2.hook; }
 undo_create_etc_dir() { sudo mv -f /etc "$HOME/.local/share/Trash/files/"; } # this only removes etc if you didn't have it before
 undo_create_pacman_d_dir() { sudo mv -f /etc/pacman.d "$HOME/.local/share/Trash/files/"; }
-# don't add all of these binaries on one line. add no text on the same line as the "binaries_to_allow=(" line. This will break the '-P, --privileges' option
+# don't add all of these binaries on one line. add no text on the same line as the "binaries_to_allow=(" line. This will break the '-P, --privileges' option. Don't delete this comment.
 binaries_to_allow=(
   "curl *" "jq *" "adb *" "bat *" "blkid *" "cat *" "chmod *" "docker-compose *" "du *" "flatpak *" "fuser *" "grep *" "journalctl *" "killall *" "ln *" "mv *" "nbfc *" "pkill *" "rm *" "rmpc *" "sensors-detect *" "sleep *" "ss *" "tailscale *" "tlp *" "tlp-stat *" "touch *" "ufw *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "tee *" "visudo --check" "sed -i '/@includedir/{/@includedir /etc/sudoers.d/!d;}' /etc/sudoers" "chattr +i /etc/sudoers" "chattr +i /etc/sudoers.d" "chattr +i /etc/sudoers.d/90-allowed-commands")
 undo_create_root() { echo_red "It is not safe for this script to undo the root password creation automatically. Check file for the root password to manually change."; }
@@ -815,7 +815,7 @@ main() {
       echo_red round "$round" is in the past. Try again
       echo "Click enter to continue"
       countdown 10
-      selected_end_date
+      selected_end_date=$(dialog --clear --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
     else
       reverse_operation+=("undo_tle_lock")
       shred "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt" # shred will overwrite the file and ensure that any file recovery fails. A person could run SystemRescue and recover the file easily if the file wasn't overwritten
