@@ -58,8 +58,8 @@ echo "${#DUPLICATE_MODS[@]}" 'mods are already indented.'
 extra_mirrors=(
 )
 cleanup() {
-  curl -fSs --connect-timeout 20 --max-time 30 "$1"
-  sed 's/#.*//' |
+  curl -fSs --connect-timeout 20 --max-time 30 "$1" |
+    sed 's/#.*//' |
     sed 's/[[:space:]]*$//' |
     sed '/^[[:space:]]*$/d' |
     sort

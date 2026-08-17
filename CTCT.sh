@@ -112,9 +112,11 @@ check_overwritten() {
   if [[ "${#overwritten_files[@]}" -eq 0 ]]; then
     if command -v vivaldi >/dev/null; then # checks if vivaldi is installed. if it is, there may be some js files. if not, there is no reason to suspect
       echo "No files will be overwritten"
-      echo_red "Also check for JS files"
-      echo "Use this time to check for JS files at /opt/vivaldi/resources/vivaldi/. Press enter when checked"
-      countdown 90
+      echo_red "Also check for JS files at /opt/vivaldi/resources/vivaldi/"
+      if [[ ! $VALIDATEOPT -eq 1 ]]; then
+        echo "Use this time to check for JS files at /opt/vivaldi/resources/vivaldi/. Press enter when checked"
+        countdown 90
+      fi
     fi
   elif [[ "${#overwritten_files[@]}" -ne 0 ]]; then
     idk_a_good_name "overwritten_files" "overwritten files"
@@ -387,7 +389,7 @@ decrypt() {
 up_to_date_JS() {
   cd "$HOME/CTCT/Custom_Vivaldi_JS(AI)/" || exit_cleanly
   for file in *js; do
-    anchor "$file" "INSERTS+=(" "1" "$HOME/CTCT/vivaldimods.sh"
+    anchor "$file" "INSERTS=(" "1" "$HOME/CTCT/vivaldimods.sh"
   done
   cd "$HOME"
 }
@@ -794,7 +796,7 @@ main() {
     echo_red "Select a date to stop focussing..."
     echo "Click enter to continue"
     countdown 10
-    selected_end_date=$(dialog --clear --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
+    selected_end_date=$(dialog --clear --erase-on-exit --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
     echo "You picked $selected_end_date. Click enter to continue"
     countdown 10
 
