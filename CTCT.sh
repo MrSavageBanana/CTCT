@@ -96,7 +96,9 @@ check_dependencies() {
     echo "No Dependencies Missing"
   elif [[ "${#missing_dependencies[@]}" -ne 0 ]]; then
     idk_a_good_name "missing_dependencies" 'missing dependencies'
-    exit
+    if [[ ! $VALIDATEOPT -eq 1 ]]; then
+      exit
+    fi
   fi
 }
 check_overwritten() {
@@ -119,7 +121,9 @@ check_overwritten() {
     if command -v vivaldi >/dev/null; then # checks if vivaldi is installed. if it is, there may be some js files. if not, there is no reason to suspect
       echo_red "Also check for JS files"
     fi
-    exit
+    if [[ ! $VALIDATEOPT -eq 1 ]]; then
+      exit
+    fi
   fi
 
   potentially_overwritten_directories=("$HOME/CTCT/" "/etc/systemd/system/CTCT.target.wants" "$HOME/.local/share/Trash/files/hooks.bin" "$HOME/.local/share/Trash/files/hooks" "$HOME/.local/share/Trash/files/etc" "$HOME/.local/share/Trash/files/pacman.d" "$HOME/.local/share/Trash/files/sudoers.d" "$HOME/.local/share/Trash/files/go" "$HOME/.local/share/Trash/files/CTCT")
@@ -130,7 +134,9 @@ check_overwritten() {
   done
   if [[ "${#overwritten_dirs[@]}" -ne 0 ]]; then
     idk_a_good_name "overwritten_dirs" "overwritten dirs"
-    exit
+    if [[ ! $VALIDATEOPT -eq 1 ]]; then
+      exit
+    fi
   fi
 }
 grab_dir_state() {
@@ -240,8 +246,6 @@ fix_overwritten() {
   # unrestrict Grub
   sudo sed -i 's/--class os\b\( --unrestricted\)*/--class os --unrestricted/g' /etc/grub.d/10_linux
   sudo grub-mkconfig -o /boot/grub/grub.cfg
-  echo_red "edit /etc/hosts yourself"
-  echo_red "move leftover JS from '/opt/vivaldi/resources/vivaldi/' yourself"
 }
 fix_dependencies() {
   for dep in "${deps[@]}"; do
@@ -256,14 +260,10 @@ fix_dependencies() {
       echo "Installing $missing_dependency" # this is neccessary because the user might not know what is being downloaded
       sudo pacman -S --noconfirm "$missing_dependency"
     done
+    echo_red "Run $FILE_PATH (-v | --validate) to confirm changes."
   fi
-  if [[ "${#missing_dependencies[@]}" -eq 0 ]]; then
-    echo "No Dependencies Missing"
-  elif [[ "${#missing_dependencies[@]}" -ne 0 ]]; then
-    echo "Couldn't fix dependencies"
-    idk_a_good_name "missing_dependencies" "missing dependencies"
-    exit
-  fi
+  echo_red "edit /etc/hosts yourself" # since fix_dependencies is always run with fix_overwritten, just put the fix_overwritten messages here
+  echo_red "move leftover JS from '/opt/vivaldi/resources/vivaldi/' yourself"
 }
 anchor() {
   set -o nounset
@@ -312,7 +312,9 @@ edit_privileges() {
 }
 print_binaries_to_allow() {
   echo "All Binaries Allowed:"
-  echo "${binaries_to_allow[@]}"
+  for binary in "${binaries_to_allow[@]}"; do
+    echo "$binary"
+  done
 }
 edit_sites() {
   local FILE="$HOME/CTCT/vivaldimods.sh"
@@ -343,33 +345,44 @@ print_help() {
   echo -e "  \033[1m$SCRIPT_NAME\033[0m [\033[1m-S\033[0m | \033[1m--sites\033[0m SITE]... [\033[1m-b\033[0m | \033[1m--blocklist\033[0m BLOCKLIST]..."
   echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-h\033[0m | \033[1m--help\033[0m"
   echo -e "\n\033[1mOPTIONS\033[0m"
-  echo -e "  \033[1m-v, --validate\033[0m\n      check that the script can run without overwriting files or missing dependencies"
-  echo -e "  \033[1m-f, --fix\033[0m\n      download any missing dependencies and move overwritten files to $HOME/.local/share/Trash/files/"
+  echo -e "  \033[1m-v, --validate\033[0m\n      check that the script can run without overwriting files or missing dependencies then exit"
+  echo -e "  \033[1m-f, --fix\033[0m\n      install any missing dependencies and move overwritten files to $HOME/.local/share/Trash/files/ then exit"
   echo -e "  \033[1m-P, --privileges\033[0m\n      add binary you want to be able to run with sudo and exit"
   echo -e "  \033[1m-p, --print-privileges\033[0m\n      print privileges to screen and exit"
-  echo -e "  \033[1m-S, --sites\033[0m\n      add sites to be blocked"
-  echo -e "  \033[1m-b, --blocklist\033[0m\n      add a stevenblack blocklist to add to hosts"
+  echo -e "  \033[1m-S, --sites\033[0m\n      add sites to be blocked and start focus mode"
+  echo -e "  \033[1m-b, --blocklist\033[0m\n      add a stevenblack blocklist to add to hosts and start focus mode"
   echo -e "  \033[1m-d, --decrypt\033[0m\n      decrypt password and prompt to change it"
   echo -e "  \033[1m-s, --show-password\033[0m\n      to be used with --decrypt. shows new password user types when changing"
   echo -e "  \033[1m-h, --help\033[0m\n      show this message and exit"
 }
 
 decrypt() {
-  "$HOME/go/bin/tle" --decrypt -o GRUB_PASSWORD-KEEP_SAFE.txt GRUB_PASSWORD-KEEP_SAFE.lock
-  local old_password
-  old_password=$(awk 'NR==2 {print; exit}' "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt")
-  echo -e "\033[38;2;124;252;0m Password=$old_password \033[0m"
-  if [ "$SHOW_PASSWORD" == true ]; then
-    set +x
-    read -pr 'Enter new password for Root: ' new_password
-
+  if [[ ! -e "$HOME/go/bin/tle]" ]]; then
+    echo "tle was not found at \"$HOME/go/bin/tle\""
+    exit
   else
-    read -spr 'Enter new password for Root: ' new_password
-    set +x
+    if [[ -e "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt" ]]; then
+      echo_red "Remove GRUB_PASSWORD-KEEP_SAFE.txt then try again"
+      exit
+    fi
+    # this should print it's own stdout which will say if it isn't time yet.
+    "$HOME/go/bin/tle" --decrypt -o "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock"
   fi
-  echo "root:$new_password" | sudo chpasswd
-  if [[ "$restore_state" == "set -o xtrace" ]]; then
-    set -x
+  if [[ -e $HOME/GRUB_PASSWORD-KEEP_SAFE.txt ]]; then
+    local old_password
+    old_password=$(awk 'NR==2 {print; exit}' "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt 2>/dev/null")
+    echo -e "\033[38;2;124;252;0m Current ROOT Password=$old_password \033[0m"
+    if [ "$SHOW_PASSWORD" == true ]; then
+      set +x
+      read -pr 'Enter new password for Root: ' new_password
+    else
+      read -spr 'Enter new password for Root: ' new_password
+      set +x
+    fi
+    echo "root:$new_password" | su --command chpasswd
+    if [[ "$restore_state" == "set -o xtrace" ]]; then
+      set -x
+    fi
   fi
 }
 
@@ -962,7 +975,7 @@ done
 # Claude's idea on how to ensure the flags are standalone without writing the same code for each standalone flag
 total_set=0
 for opt in "$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT" "$SITESOPT" "$BLOCKLISTOPT" "$DECRYPTOPT" "$SHOWPASSWORDOPT"; do
-  ((opt == 1)) && ((total_set++))
+  ((opt == 1)) && ((++total_set))
 done
 standalone_values=("$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT")
 standalone_names=("--validate" "--fix" "--privileges" "--print-privileges")
@@ -979,7 +992,7 @@ fi
 
 other_opts_set=0
 for opt in "$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT" "$SITESOPT" "$BLOCKLISTOPT"; do
-  ((opt == 1)) && ((other_opts_set++))
+  ((opt == 1)) && ((++other_opts_set))
 done
 if [[ $DECRYPTOPT -eq 1 && $other_opts_set -gt 0 ]]; then
   echo_red "--decrypt (with optional --show-password) is to be used on its own"
