@@ -113,7 +113,7 @@ check_overwritten() {
     if command -v vivaldi >/dev/null; then # checks if vivaldi is installed. if it is, there may be some js files. if not, there is no reason to suspect
       echo "No files will be overwritten"
       echo_red "Also check for JS files"
-      echo "Use this time to check for JS files at '/opt/vivaldi/resources/vivaldi/'. Press enter when checked"
+      echo "Use this time to check for JS files at /opt/vivaldi/resources/vivaldi/. Press enter when checked"
       countdown 90
     fi
   elif [[ "${#overwritten_files[@]}" -ne 0 ]]; then
@@ -257,7 +257,6 @@ fix_dependencies() {
     echo "No Dependencies Missing"
   elif [[ "${#missing_dependencies[@]}" -ne 0 ]]; then
     for missing_dependency in "${missing_dependencies[@]}"; do
-      echo "Installing $missing_dependency" # this is neccessary because the user might not know what is being downloaded
       sudo pacman -S --noconfirm "$missing_dependency"
     done
     echo_red "Run $FILE_PATH (-v | --validate) to confirm changes."
@@ -385,7 +384,13 @@ decrypt() {
     fi
   fi
 }
-
+up_to_date_JS() {
+  cd "$HOME/CTCT/Custom_Vivaldi_JS(AI)/" || exit_cleanly
+  for file in *js; do
+    anchor "$file" "INSERTS+=(" "1" "$HOME/CTCT/vivaldimods.sh"
+  done
+  cd "$HOME"
+}
 # Checks Ends
 # Rollback Functions Start
 undo_closetabs_creation() { sudo mv -f /etc/systemd/system/closetabs.service "$HOME/CTCT"; }
@@ -583,6 +588,7 @@ main() {
   if [[ $EDIT_BLOCKLIST == "true" ]]; then
     edit_blocklists
   fi
+  up_to_date_JS
   # Service
   closetabs_creation() { sudo mv -f "$HOME/CTCT/closetabs.service" /etc/systemd/system; }
   move_matt_daemon() { sudo mv -f "$HOME/CTCT/matt_damon.sh" /etc/; }
@@ -784,17 +790,18 @@ main() {
   fi
 
   # end of grub setup
-  echo_red "Select a date to stop focussing..."
-  echo "Click enter to continue"
-  countdown 10
+  select_end() {
+    echo_red "Select a date to stop focussing..."
+    echo "Click enter to continue"
+    countdown 10
+    selected_end_date=$(dialog --clear --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
+    echo "You picked $selected_end_date. Click enter to continue"
+    countdown 10
 
-  selected_end_date=$(dialog --clear --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
-  echo "You picked $selected_end_date. Click enter to continue"
-  countdown 10
-
-  echo_red "Select a time to end the script..."
-  selected_end_time=$(dialog --erase-on-exit --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
-
+    echo_red "Select a time to end the script..."
+    selected_end_time=$(dialog --erase-on-exit --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
+  }
+  select_end
   ending="$selected_end_date $selected_end_time"
   ending_epoch=$(date -d "$ending" +%s)
   if [[ $drand_failed == "true" ]]; then
@@ -813,9 +820,7 @@ main() {
     "$HOME/go/bin/tle" -e -c "$hash" -r "$round" -o "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt"
     if [[ ! -s "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" ]]; then
       echo_red round "$round" is in the past. Try again
-      echo "Click enter to continue"
-      countdown 10
-      selected_end_date=$(dialog --clear --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
+      select_end
     else
       reverse_operation+=("undo_tle_lock")
       shred "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt" # shred will overwrite the file and ensure that any file recovery fails. A person could run SystemRescue and recover the file easily if the file wasn't overwritten

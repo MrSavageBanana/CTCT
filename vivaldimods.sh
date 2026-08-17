@@ -35,20 +35,9 @@ enable_closetabs
 # --- VARIABLES ---
 FILE="/opt/vivaldi/resources/vivaldi/window.html"
 ANCHOR="<body>"
-# removed youtube.js
-# HistPass.js
-#INSERTS=('startpage-wallpaper.js' 'bridge.js' 'autosave.js' 'loading.js' 'custom.js' 'dialogTab.js' 'tree.js' 'monochrome-icons.js' 'todoistDialog.js''autocomplete-domain.js' 'toast.js' 'yandex.js' 'HibernatePanels.js' 'Markdown.js' 'Media.js')
-for file in "/opt/vivaldi/resources/vivaldi"/*.js; do
-  [ -e "$file" ] || continue
-  fname=$(basename "$file")
-  case "$fname" in
-  *bundle* | *background-service-worker* | *devtools*) continue ;;
-  *) echo "$fname" >>"$HOME/tmpfilevivaldimodssh.txt" ;;
-  esac
-done
-readarray <"$HOME/tmpfilevivaldimodssh.txt" -t INSERTS
-rm "$HOME/tmpfilevivaldimodssh.txt"
-INSERTS+=('video.js' 'shorts.js' 'reddit_hp.js' 'reddit.js' 'youtubeNU.js' 'youtubesearch.js' 'youtubeautoplay.js' 'ytblur.js' 'YTChannel.js' 'ythover.js')
+INSERTS=(
+
+)
 INSERT_END=("${INSERTS[@]/%/\"></script>}")
 INSERT_BEGIN=("${INSERT_END[@]/#/<script src=\"}")
 # DEBUG MESSAGES
@@ -87,10 +76,8 @@ current=$(awk '/0.0.0.0/ { count++ } count >= 2' /etc/hosts |
   sed '/^[[:space:]]*$/d' |
   sort)
 
-# adds safesearch
 custom_websites=(
 )
-# Lines marked with < are in mirror but not in current
 for custom_websites_to_block in "${custom_websites[@]}"; do
   if ! grep -qF "$custom_websites_to_block" /etc/hosts; then
     mirror="$mirror"$'\n'"$custom_websites_to_block" # gemini told me this is how to make each result on a new line
@@ -102,6 +89,7 @@ for extra_mirror in "${extra_mirrors[@]}"; do
     mirror="$mirror"$'\n'"$extra_mirror"
   fi
 done
+# Lines marked with < are in mirror but not in current
 missing=$(diff <(echo "$mirror") <(echo "$current") | grep '^<' | sed 's/^< //')
 if [ -z "$missing" ]; then
   echo "Nothing missing. /etc/hosts is up to date."
