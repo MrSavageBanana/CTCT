@@ -1,4 +1,5 @@
 #!/bin/bash
+restore_state=$(set +o | grep -F -- '-o xtrace' || true) # this checks if the script was run with bash -x so after it hides the passwords, it shows the output of -x
 read_desktop_files() {
   grep -Rl "Categories=.*WebBrowser" /usr/share/applications \
     ~/.local/share/applications 2>/dev/null | xargs awk -F'[= ]' \
@@ -52,6 +53,7 @@ done
 
 echo "${#DUPLICATE_MODS[@]}" 'mods are already indented.'
 # Check that /etc/hosts isn't missing anything from the mirror, and add what's missing
+set +x
 extra_mirrors=(
 )
 cleanup() {
@@ -91,6 +93,9 @@ missing=$(diff <(echo "$mirror") <(echo "$current") | grep '^<' | sed 's/^< //')
 if [ -z "$missing" ]; then
   echo "Nothing missing. /etc/hosts is up to date."
 else
+  if [[ "$restore_state" == "set -o xtrace" ]]; then
+    set -x
+  fi
   # Claude gave me this idea for implementing my  countdown
   count=0
   while IFS= read -r; do

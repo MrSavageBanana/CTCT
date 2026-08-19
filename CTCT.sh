@@ -50,6 +50,9 @@ SCRIPT_DIR=$(
   fi
 )
 FILE_PATH="$SCRIPT_DIR/$SCRIPT_NAME"
+# flag idea: a quiet flag which will remove any output that may show up.
+# The users can specify what they want gone and
+# it will write to a variable that will be checked before the variable is used
 SHORT="vfP:pS:b:Dshd:t:w:a:F:"
 LONG="validate,fix,privileges:,print-privileges,sites:,blocklist:,decrypt,show-password,help,date:,time:,add-website:,add-process:,add-file:"
 if ! PARSED=$(getopt --options "$SHORT" --longoptions "$LONG" --name "$0" -- "$@"); then
@@ -82,6 +85,11 @@ declare -a reverse_hooks_setup=()
 declare -a reverse_operation=()
 declare -a CUSTOM_SITES=()
 declare -a CUSTOM_BLOCKLISTS=()
+important_files=('/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pacman.d/hooks/grub1.hook' '/etc/pacman.d/hooks/grub2.hook' '/etc/pacman.d/hooks.bin/vivaldimods.sh' '/etc/systemd/system/closetabs.service' '/etc/systemd/system/CTCT.target.wants/' '/etc/matt_damon.sh' "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" '/etc/grub.d/40_custom' '/etc/grub.d/10_linux' '/opt/vivaldi/resources/vivaldi/window.html')
+important_files2=('/etc/sudoers' '/etc/sudoers.d' '/etc/sudoers.d/90-allowed-commands')
+important_files_to_create=('/etc/file-focus.txt' '/etc/process-focus.txt' '/etc/website-focus.txt')
+important_files_to_append=('/etc/browsers.txt' '/etc/hosts' '/etc/file-focus.txt' '/etc/process-focus.txt' '/etc/website-focus.txt')
+potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/systemd/system/CTCT.target.wants/closetabs.service" "/etc/matt_damon.sh" "/etc/browsers.txt" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "/etc/sudoers.d/90-allowed-commands" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/.local/share/Trash/files/vivaldimods_output.txt" "$HOME/.local/share/Trash/files/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}" "$HOME/.local/share/Trash/files/tle")
 user=$(whoami)
 export LC_ALL=C
 trap 'perform_rollback' ERR
@@ -105,7 +113,6 @@ check_dependencies() {
 }
 check_overwritten() {
   # we are unable to warn the users about the JS files that may be overwritten unless we ping the github repo (which we will already do when we clone) to check what files might be overwritten
-  potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/systemd/system/CTCT.target.wants/closetabs.service" "/etc/matt_damon.sh" "/etc/browsers.txt" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "/etc/sudoers.d/90-allowed-commands" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/.local/share/Trash/files/vivaldimods_output.txt" "$HOME/.local/share/Trash/files/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}" "$HOME/.local/share/Trash/files/tle")
   for file in "${potentially_overwritten_files[@]}"; do
     if [[ -e "$file" ]]; then
       overwritten_files+=("$file")
@@ -231,18 +238,19 @@ fix_overwritten() {
     "${overwritten_files[@]}"
     "${important_files[@]}"
     "${important_files2[@]}"
+    "${important_files_to_append[@]}"
   )
   for f in "${all_potentially_problomatic_files[@]}"; do
     if [[ -e "$f" ]]; then
-      chattr -ia "$f" &>/dev/null
+      sudo chattr -ia "$f" &>/dev/null
     fi
   done
   if [[ ! -e "$HOME/.local/share/Trash/files/" ]]; then
     mkdir -p "$HOME/.local/share/Trash/files/"
   fi
-  for f in "${overwritten_files[@]}"; do
-    if [[ -e "$f" ]]; then
-      mv -f "$f" "$HOME/.local/share/Trash/files/"
+  for f2 in "${potentially_overwritten_files[@]}"; do
+    if [[ -e "$f2" ]]; then
+      sudo mv -f "$f2" "$HOME/.local/share/Trash/files/"
     fi
   done
   # Deletes lines with the username and password
@@ -265,8 +273,10 @@ fix_dependencies() {
     done
     echo_red "Run $FILE_PATH (-v | --validate) to confirm changes."
   fi
+  echo -ne '\n'
+  echo_red "IF CLEANING ALL LEFTOVER EFFECTS FROM CTCT, THE FOLLOWING APPLY:"
   echo_red "remove entries from /etc/hosts yourself" # since fix_dependencies is always run with fix_overwritten, just put the fix_overwritten messages here
-  echo_red "move leftover JS from /opt/vivaldi/resources/vivaldi/ yourself"
+  echo_red "remove leftover JS from /opt/vivaldi/resources/vivaldi/ yourself"
 }
 anchor() {
   set -o nounset
@@ -340,31 +350,32 @@ edit_blocklists() {
     anchor "$blocklist" "extra_mirrors=(" "1" "$FILE" "false"
   done
 }
+
 print_help() {
   echo -e "\033[1mUsage:\033[0m"
-  echo -e "  \033[1m$FILE_PATH\033[0m"
-  echo -e "  \033[1m$FILE_PATH\033[0m \033[1m-v\033[0m | \033[1m--validate\033[0m"
-  echo -e "  \033[1m$FILE_PATH\033[0m \033[1m-f\033[0m | \033[1m--fix\033[0m"
-  echo -e "  \033[1m$FILE_PATH\033[0m \033[1m-p\033[0m | \033[1m--print-privileges\033[0m"
-  echo -e "  \033[1m$FILE_PATH\033[0m \033[1m-P\033[0m | \033[1m--privileges\033[0m PRIVILEGE"
-  echo -e "  \033[1m$FILE_PATH\033[0m \033[1m-w\033[0m | \033[1m--add-website\033[0m WEBSITE\033[1m:\033[0mDURATION"
-  echo -e "  \033[1m$FILE_PATH\033[0m \033[1m-a\033[0m | \033[1m--add-process\033[0m PROCESS\033[1m:\033[0mDURATION"
-  echo -e "  \033[1m$FILE_PATH\033[0m \033[1m-F\033[0m | \033[1m--add-file\033[0m FILE\033[1m:\033[0mDURATION"
-  echo -e "  \033[1m$FILE_PATH\033[0m \033[1m-d\033[0m \033[1m-s\033[0m"
-  echo -e "  \033[1m$FILE_PATH\033[0m [\033[1m-D\033[0m | \033[1m--date\033[0m DATE] [\033[1m-t\033[0m | \033[1m--time\033[0m TIME] [\033[1m-S\033[0m | \033[1m--sites\033[0m SITE] [\033[1m-b\033[0m | \033[1m--blocklist\033[0m BLOCKLIST]"
-  echo -e "  \033[1m$FILE_PATH\033[0m \033[1m-h\033[0m | \033[1m--help\033[0m"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-v\033[0m | \033[1m--validate\033[0m"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-f\033[0m | \033[1m--fix\033[0m"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-p\033[0m | \033[1m--print-privileges\033[0m"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-P\033[0m | \033[1m--privileges\033[0m PRIVILEGE"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-w\033[0m | \033[1m--add-website\033[0m WEBSITE\033[1m:\033[0mDURATION"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-a\033[0m | \033[1m--add-process\033[0m PROCESS\033[1m:\033[0mDURATION"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-F\033[0m | \033[1m--add-file\033[0m FILE\033[1m:\033[0mDURATION"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-D\033[0m \033[1m-s\033[0m"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m [\033[1m-d\033[0m | \033[1m--date\033[0m DATE] [\033[1m-t\033[0m | \033[1m--time\033[0m TIME] [\033[1m-S\033[0m | \033[1m--sites\033[0m SITE] [\033[1m-b\033[0m | \033[1m--blocklist\033[0m BLOCKLIST]"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-h\033[0m | \033[1m--help\033[0m"
   echo -e "\n\033[1mOPTIONS\033[0m"
   echo -e "  \033[1m-v, --validate\033[0m\n      check that the script can run without overwriting files or missing dependencies"
   echo -e "  \033[1m-f, --fix\033[0m\n      download any missing dependencies and move overwritten files to $HOME/.local/share/Trash/files/"
   echo -e "  \033[1m-P, --privileges\033[0m\n      add binary you want to be able to run with sudo and exit"
   echo -e "  \033[1m-p, --print-privileges\033[0m\n      print privileges to screen and exit"
-  echo -e "  \033[1m-d, --decrypt\033[0m\n      decrypt password and prompt to change it"
+  echo -e "  \033[1m-D, --decrypt\033[0m\n      decrypt password and prompt to change it"
   echo -e "  \033[1m-s, --show-password\033[0m\n      to be used with --decrypt. shows new password user types when changing"
-  echo -e "  \033[1m-D, --date\033[0m\n      add a date to end the focus"
-  echo -e "  \033[1m-t, --time\033[0m\n      add a time to end the focus"
+  echo -e "  \033[1m-d, --date\033[0m\n      add a date to end the focus. format: MM/DD/YY"
+  echo -e "  \033[1m-t, --time\033[0m\n      add a time to end the focus. format: HH:MM:SS"
   echo -e "  \033[1m-w, --add-website\033[0m\n      add a website to be blocked for some time"
   echo -e "  \033[1m-a, --add-process\033[0m\n      add a process to be blocked for some time"
-  echo -e "  \033[1m-F, --add-file\033[0m\n      add a file or directory to be uneditable for some time"
+  echo -e "  \033[1m-F, --add-file\033[0m\n      add a file or directory to be immutable for some time"
   echo -e "  \033[1m-S, --sites\033[0m\n      add sites to be blocked"
   echo -e "  \033[1m-b, --blocklist\033[0m\n      add a stevenblack blocklist to add to hosts"
   echo -e "  \033[1m-h, --help\033[0m\n      show this message and exit"
@@ -376,8 +387,8 @@ decrypt() {
     echo "tle was not found at \"$HOME/go/bin/tle\""
     exit
   else
-    if [[ -e "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt" ]]; then
-      echo_red "Remove GRUB_PASSWORD-KEEP_SAFE.txt then try again"
+    if [[ -e "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" ]]; then
+      echo_red "Remove GRUB_PASSWORD-KEEP_SAFE_unlocked.txt then try again"
       exit
     fi
     up_to_date_info=$(curl -sf https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/info)
@@ -392,12 +403,12 @@ decrypt() {
       hash=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $19}')
     fi
     # this should print it's own stdout which will say if it isn't time yet.
-    decrypt_output=$("$HOME/go/bin/tle" --decrypt -o "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" 2>&1)
+    decrypt_output=$("$HOME/go/bin/tle" --decrypt -o "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" 2>&1)
     if [[ ! -z "$decrypt_output" ]]; then
-      round=$(echo decrypt_output | awk -F " " '{print $7}')
+      round=$(echo "$decrypt_output" | awk -F " " '{print $7}')
       epoch=$((((round - 1) * period) + genesis))
-      selected_end=$(date -d "$epoch" "%X %x")
-      current_epoch=$(date -d +%s)
+      selected_end=$(date -d "@$epoch" "+%X %x")
+      current_epoch=$(date +%s)
       time_diff=$((epoch - current_epoch))
       if [ "$time_diff" -lt 60 ]; then
         echo "unlock in less than 60 seconds"
@@ -428,16 +439,16 @@ decrypt() {
       fi
       if [[ ! -z "$selected_end" ]]; then
         if [[ ! -z "$time_diff" ]]; then
-          echo "ends at $selected_end ($result remaining)"
-          true
+          echo "Ends at $selected_end ($result remaining)"
+        else
+          echo "Ends at $selected_end"
         fi
-        echo "ends at $selected_end"
       fi
     fi
 
-    if [[ -e $HOME/GRUB_PASSWORD-KEEP_SAFE.txt ]]; then
+    if [[ -s "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" ]]; then
       local old_password
-      old_password=$(awk 'NR==2 {print; exit}' "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt 2>/dev/null")
+      old_password=$(awk 'NR==2 {print; exit}' "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" 2>/dev/null)
       echo -e "\033[38;2;124;252;0m Current ROOT Password=$old_password \033[0m"
       if [ "$SHOW_PASSWORD" == true ]; then
         set +x
@@ -647,10 +658,6 @@ exit_cleanly() {
   echo "Above was Exit code of command that failed"
   perform_rollback
 }
-important_files=('/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pacman.d/hooks/grub1.hook' '/etc/pacman.d/hooks/grub2.hook' '/etc/pacman.d/hooks.bin/vivaldimods.sh' '/etc/systemd/system/closetabs.service' '/etc/systemd/system/CTCT.target.wants/' '/etc/matt_damon.sh' "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" '/etc/grub.d/40_custom' '/etc/grub.d/10_linux' '/opt/vivaldi/resources/vivaldi/window.html')
-important_files2=('/etc/sudoers' '/etc/sudoers.d' '/etc/sudoers.d/90-allowed-commands')
-important_files_to_create=('/etc/file-focus.txt' '/etc/process-focus.txt' '/etc/website-focus.txt')
-important_files_to_append=('/etc/browsers.txt' '/etc/hosts' '/etc/file-focus.txt' '/etc/process-focus.txt' '/etc/website-focus.txt')
 backup_timestamp=$(date '+%Y-%m-%dT%H-%M-%S')
 readonly backup_timestamp
 restore_state=$(set +o | grep -F -- '-o xtrace' || true) # this checks if the script was run with bash -x so after it hides the passwords, it shows the output of -x
@@ -705,7 +712,7 @@ main() {
   #	perform_rollback
   # fi
 
-  echo "Checking that user can run sudo"
+  echo_red "Checking that user can run sudo"
   sudo -vk || exit_cleanly # to ensure that the user has sudo privileges and can run sudo?. Probably will make this more better by ensuring the user can run sudo on all commands neccessary for this script to run
 
   echo "Grabbing current filesystem state"
@@ -931,19 +938,37 @@ main() {
 
   # end of grub setup
   verify_time_syntax() {
-    formatted_time=$(date -d "$selected_end_time" +"%H:%M:%S")
+    formatted_time=$(date -d "$selected_end_time" +%H:%M:%S)
     if [ "$formatted_time" == "$selected_end_time" ]; then
       return 0
     else
+      TIME_MANUAL=false
+      return 1
+    fi
+    epoch_formatted_date=$(date -d "$selected_end_date" +%s)
+    today=$(date -d today +%s)
+    if [[ "$epoch_formatted_date" -gt "$today" ]]; then
+      return 0
+    else
+      TIME_MANUAL=false
       return 1
     fi
   }
   verify_date_syntax() {
-    formatted_date=$(date -d "$selected_end_date" +"%m/%d/%y")
+    formatted_date=$(date -d "$selected_end_date" +%m/%d/%y)
     if [ "$formatted_date" == "$selected_end_date" ]; then
       return 0
     else
       return 1
+      DATE_MANUAL=false
+    fi
+    epoch_formatted_date=$(date -d "$selected_end_date" +%s)
+    today=$(date -d today +%s)
+    if [[ "$epoch_formatted_date" -gt "$today" ]]; then
+      return 0
+    else
+      return 1
+      DATE_MANUAL=false
     fi
   }
   select_end() {
@@ -953,7 +978,6 @@ main() {
         echo "Click enter to continue"
         countdown 10
         selected_end_date=$(dialog --clear --erase-on-exit --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
-        selected_end_date=$(dialog --clear --erase-on-exit --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
         dialog --infobox "You picked ${selected_end_date:-nothing}" 0 0
       fi
     else
@@ -961,20 +985,20 @@ main() {
       echo "Click enter to continue"
       countdown 10
       selected_end_date=$(dialog --clear --erase-on-exit --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
-      dialog --infobox "You picked ${selected_end_date:-nothing}. Click enter to continue to enter time" 0 0
+      dialog --infobox "You picked ${selected_end_date:-nothing}" 0 0
     fi
     if [[ $TIME_MANUAL == true ]]; then
       if ! verify_time_syntax; then
         countdown 10
         echo_red "Select a time to end the script..."
         selected_end_time=$(dialog --erase-on-exit --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
-        dialog --infobox "You picked ${selected_end_time:-nothing}." 0 0
+        dialog --infobox "You picked ${selected_end_time:-nothing}" 0 0
       fi
     else
       countdown 10
       echo_red "Select a time to end the script..."
       selected_end_time=$(dialog --erase-on-exit --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
-      dialog --infobox "You picked ${selected_end_time:-nothing}." 0 0
+      dialog --infobox "You picked ${selected_end_time:-nothing}" 0 0
     fi
   }
   select_end
@@ -996,6 +1020,8 @@ main() {
     "$HOME/go/bin/tle" -e -c "$hash" -r "$round" -o "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt"
     if [[ ! -s "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" ]]; then
       echo_red round "$round" is in the past. Try again
+      DATE_MANUAL=false
+      TIME_MANUAL=false
       select_end
     else
       reverse_operation+=("undo_tle_lock")
