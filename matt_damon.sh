@@ -1,21 +1,4 @@
 #!/bin/bash
-# This works just for vivaldi
-
-# while true; do
-# PID=$(pgrep --list-full vivaldi-bin | grep -v "type" | awk '{print $1}')
-# cmdline=$(pgrep --list-full vivaldi-bin | grep -v "type" | awk '{$1=""; print $0}' | grep --only-matching -- "--remote-debugging-port=9222")
-#
-# if [[ "$cmdline" != "--remote-debugging-port=9222" && "$PID" =~ ^[0-9]+$ ]]; then # If $cmdline ≠ "--remote-debugging-port=9222" and $PID is a number then kill the PID
-#     kill "$PID"
-# elif [[ "$cmdline" == "--remote-debugging-port=9222" ]]; then
-# 	echo ""
-# else
-# 	echo ""
-# fi
-# done
-
-# This works for all browsers which display their browser status in a .desktop file
-# The working script as a function we can call
 # created with Claude. Account: Burhan Ra'if Kouri
 check_dependencies() {
   # just the dependencies that vivaldimods and matt_damon rely on.
@@ -30,7 +13,8 @@ check_dependencies() {
   elif [[ "${#missing_dependencies[@]}" -ne 0 ]]; then
     echo_red "${#missing_dependencies[@]}" 'missing dependencies!:'
     for missing_dependency in "${missing_dependencies[@]}"; do
-      sudo pacman -S --needed --noconfirm "$missing_dependency" # has to attempt to install missing dependencies.
+      # has to attempt to install missing dependencies.
+      sudo pacman -S --needed --noconfirm "$missing_dependency"
     done
   else
     echo_red "missing_dependencies array is not working. Array:"
@@ -39,7 +23,7 @@ check_dependencies() {
   fi
 
 }
-closetabs2() {
+closetabs() {
   domains=()
   ids=()
 
@@ -53,23 +37,93 @@ closetabs2() {
   for i in "${!domains[@]}"; do
     if awk '!/#/ && /0.0.0.0/ {print $2}' /etc/hosts | grep -qFx "${domains[$i]}"; then
       curl -s "http://localhost:9222/json/close/${ids[$i]}" >/dev/null
-    else
-      # if the user has many links from the same domain but they aren't in the /etc/hosts, just remove all of them.
-      for dom in "${domains[@]}"; do
-        if [[ "$dom" == "${domains[$i]}" ]]; then
-          unset "domains[$i]"
-          unset "ids[$i]"
-        fi
-      done
     fi
   done
+}
+# assumes that the /etc/focus.txt has this in the following order
+# "website" "round"
+closetabs_focus() {
+  local file="/etc/website-focus.txt"
+  local -a domains=() ids=()
+  # check if there is any outdate websites existing
+  current_round=$(curl -Ss https://api.drand.sh/public/latest | awk -F '[\":,]' '{print $4}')
+  awk -v current_round="$current_round" -v file="$file" -F '"' '{
+    round_to_end = $4
+    if (round_to_end < current_round) {
+        cmd = "sudo sed -i '"'"'/" round_to_end "/d'"'"' " file
+        system(cmd)
+    }
+}' "$file"
+
+  # get the existing domains
+  while IFS=$'\t' read -r domain id; do
+    domains+=("$domain")
+    ids+=("$id")
+  done < <(
+    curl -s http://localhost:9222/json/list | awk -F '"' '
+    /"id":/ { id = $4 }
+    /"url": "https?:\/\// { sub(/^https?:\/\//, "", $4); print $4 "\t" id }
+    '
+  )
+  for i in "${!domains[@]}"; do
+    if grep -qF "${domains[$i]}" "$file"; then
+      curl -s "http://localhost:9222/json/close/${ids[$i]}" >/dev/null
+    fi
+  done
+
+}
+focus() {
+  local file="/etc/process-focus.txt"
+  process=$(awk -F '"' '{print $2}' "$file")
+  PIDS=()
+  # claude helped with parsing multiple entries. This whole mess is claude's.
+  # It is this complicated to ensure it can manage any character in a file(except newlines)
+  while IFS= read -r process; do
+    [[ -z "$process" ]] && continue
+    escaped=$(printf '%s' "$process" | sed -e 's/[.[\*^$()+?{|\\]/\\&/g')
+    [[ -z "$escaped" ]] && continue # i ain't taking any risks. I don't want any empty strings.
+    mapfile -t -O "${#PIDS[@]}" PIDS < <(pgrep -f -- "$escaped")
+  done < <(awk -F '"' '{print $2}' "$file")
+  # dedupe, since two names could theoretically match overlapping PIDs
+  mapfile -t PIDS < <(printf '%s\n' "${PIDS[@]}" | sort -un)
+  for pid in "${PIDS[@]}"; do
+    if [[ ! "$pid" =~ ^[0-9]+$ ]]; then
+      return
+    fi
+  done
+  current_round=$(curl -Ss https://api.drand.sh/public/latest | awk -F '[\":,]' '{print $4}')
+  awk -v current_round="$current_round" -v file="$file" -F '\"' '{
+      round_to_end = $4
+      if (round_to_end < current_round) {
+      cmd = "sudo sed -i '"'"'/" round_to_end "/d'"'"' " file
+      system(cmd)
+      }
+      }' "$file"
+  for pid2 in "${PIDS[@]}"; do
+    kill "$pid2"
+  done
+}
+focus_attr() {
+  local file="/etc/file-focus.txt"
+  current_round=$(curl -Ss https://api.drand.sh/public/latest | awk -F '[\":,]' '{print $4}')
+  awk -v current_round="$current_round" -v file="$file" -F '"' '{
+  focus_file = $2
+  round_to_end = $4
+  if (round_to_end < current_round) {
+  cmd2 = "sudo chattr -i " focus_file
+  cmd = "sudo sed -i '"'"'/" round_to_end "/d'"'"' " file
+  system(cmd2)
+  system(cmd)
+ } else {
+  cmd3 = "sudo chattr +i " focus_file
+  system(cmd3)
+  }' "$file"
 }
 
 check_browser() {
   local browser="$1"
   local cmdline
 
-  # Turn this into an array then talk to unscripted about problems
   mapfile -t PIDS < <(pgrep -f "$browser")
   # Browser isn't running, nothing to do
   for pid in "${PIDS[@]}"; do
@@ -94,8 +148,11 @@ check_browser() {
       kill "$pid3"
     done
   elif [[ "$cmdline" == "--remote-debugging-port=9222" ]]; then
-    closetabs2
+    closetabs
+    closetabs_focus
   fi
+  focus_attr
+  focus
 }
 
 read_desktop_files() {

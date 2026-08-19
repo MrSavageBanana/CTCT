@@ -40,9 +40,6 @@ INSERTS=(
 )
 INSERT_END=("${INSERTS[@]/%/\"></script>}")
 INSERT_BEGIN=("${INSERT_END[@]/#/<script src=\"}")
-# DEBUG MESSAGES
-# echo "${INSERT_BEGIN[@]}"
-# echo 'EXECUTION COMMENCE!'
 # --- EXECUTION BLOCKS ---
 for item in "${INSERT_BEGIN[@]}"; do
   if grep -qF "$item" "$FILE"; then

@@ -30,9 +30,11 @@ idk_a_good_name() {
 immuting() {
   local -n chosen_array="$1"
   local chosen_leading_path="$2"
+  local chosen_attribute="$3"
+  chosen_attribute=i
   local chosen_item
   for chosen_item in "${chosen_array[@]}"; do
-    if sudo chattr +i "$chosen_leading_path$chosen_item"; then
+    if sudo chattr +"$chosen_attribute" "$chosen_leading_path$chosen_item"; then
       reverse_operation+=("reverse_immute" "$chosen_leading_path$chosen_item")
     else
       perform_rollback
@@ -48,8 +50,8 @@ SCRIPT_DIR=$(
   fi
 )
 FILE_PATH="$SCRIPT_DIR/$SCRIPT_NAME"
-SHORT="vfP:pS:b:dsh"
-LONG="validate,fix,privileges:,print-privileges,sites:,blocklist:,decrypt,show-password,help"
+SHORT="vfP:pS:b:Dshd:t:w:a:F:"
+LONG="validate,fix,privileges:,print-privileges,sites:,blocklist:,decrypt,show-password,help,date:,time:,add-website:,add-process:,add-file:"
 if ! PARSED=$(getopt --options "$SHORT" --longoptions "$LONG" --name "$0" -- "$@"); then
   echo "Try '$FILE_PATH --help' for more information"
   exit 2
@@ -272,6 +274,7 @@ anchor() {
   local anchor="$2"
   local instance="$3"
   local file="$4"
+  local output="$5"
   if grep -qF "$inserts" "$file"; then
     echo_red "$inserts is a DUPLICATE ENTRY!"
   else
@@ -285,7 +288,9 @@ anchor() {
     }
     }
     1' "$file" >tmp.txt && mv tmp.txt "$file"
-    echo "Inserted $inserts. $file has been updated"
+    if [ "$output" == "true" ]; then
+      echo "Inserted $inserts. $file has been updated"
+    fi
   fi
   set +o nounset
 }
@@ -308,7 +313,7 @@ edit_privileges() {
     echo "FIX ERRORS THEN RETRY AGAIN"
     exit
   fi
-  anchor "$INSERTS" "binaries_to_allow=(" "4" "$FILE_PATH"
+  anchor "$INSERTS" "binaries_to_allow=(" "4" "$FILE_PATH" "true"
   echo_red "Run $FILE_PATH (-p | --print_privileges) to confirm changes."
 }
 print_binaries_to_allow() {
@@ -323,7 +328,7 @@ edit_sites() {
     perform_rollback
   fi
   for site in "${CUSTOM_SITES[@]}"; do
-    anchor "$site" "custom_websites=(" "1" "$FILE"
+    anchor "$site" "custom_websites=(" "1" "$FILE" "false"
   done
 }
 edit_blocklists() {
@@ -332,33 +337,42 @@ edit_blocklists() {
     perform_rollback
   fi
   for blocklist in "${CUSTOM_BLOCKLISTS[@]}"; do
-    anchor "$blocklist" "extra_mirrors=(" "1" "$FILE"
+    anchor "$blocklist" "extra_mirrors=(" "1" "$FILE" "false"
   done
 }
 print_help() {
   echo -e "\033[1mUsage:\033[0m"
-  echo -e "  \033[1m$SCRIPT_NAME\033[0m"
-  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-v\033[0m | \033[1m--validate\033[0m"
-  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-f\033[0m | \033[1m--fix\033[0m"
-  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-p\033[0m | \033[1m--print-privileges\033[0m"
-  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-P\033[0m | \033[1m--privileges\033[0m PRIVILEGE"
-  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-d\033[0m \033[1m-s\033[0m"
-  echo -e "  \033[1m$SCRIPT_NAME\033[0m [\033[1m-S\033[0m | \033[1m--sites\033[0m SITE]... [\033[1m-b\033[0m | \033[1m--blocklist\033[0m BLOCKLIST]..."
-  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-h\033[0m | \033[1m--help\033[0m"
+  echo -e "  \033[1m$FILE_PATH\033[0m"
+  echo -e "  \033[1m$FILE_PATH\033[0m \033[1m-v\033[0m | \033[1m--validate\033[0m"
+  echo -e "  \033[1m$FILE_PATH\033[0m \033[1m-f\033[0m | \033[1m--fix\033[0m"
+  echo -e "  \033[1m$FILE_PATH\033[0m \033[1m-p\033[0m | \033[1m--print-privileges\033[0m"
+  echo -e "  \033[1m$FILE_PATH\033[0m \033[1m-P\033[0m | \033[1m--privileges\033[0m PRIVILEGE"
+  echo -e "  \033[1m$FILE_PATH\033[0m \033[1m-w\033[0m | \033[1m--add-website\033[0m WEBSITE\033[1m:\033[0mDURATION"
+  echo -e "  \033[1m$FILE_PATH\033[0m \033[1m-a\033[0m | \033[1m--add-process\033[0m PROCESS\033[1m:\033[0mDURATION"
+  echo -e "  \033[1m$FILE_PATH\033[0m \033[1m-F\033[0m | \033[1m--add-file\033[0m FILE\033[1m:\033[0mDURATION"
+  echo -e "  \033[1m$FILE_PATH\033[0m \033[1m-d\033[0m \033[1m-s\033[0m"
+  echo -e "  \033[1m$FILE_PATH\033[0m [\033[1m-D\033[0m | \033[1m--date\033[0m DATE] [\033[1m-t\033[0m | \033[1m--time\033[0m TIME] [\033[1m-S\033[0m | \033[1m--sites\033[0m SITE] [\033[1m-b\033[0m | \033[1m--blocklist\033[0m BLOCKLIST]"
+  echo -e "  \033[1m$FILE_PATH\033[0m \033[1m-h\033[0m | \033[1m--help\033[0m"
   echo -e "\n\033[1mOPTIONS\033[0m"
-  echo -e "  \033[1m-v, --validate\033[0m\n      check that the script can run without overwriting files or missing dependencies then exit"
-  echo -e "  \033[1m-f, --fix\033[0m\n      install any missing dependencies and move overwritten files to $HOME/.local/share/Trash/files/ then exit"
+  echo -e "  \033[1m-v, --validate\033[0m\n      check that the script can run without overwriting files or missing dependencies"
+  echo -e "  \033[1m-f, --fix\033[0m\n      download any missing dependencies and move overwritten files to $HOME/.local/share/Trash/files/"
   echo -e "  \033[1m-P, --privileges\033[0m\n      add binary you want to be able to run with sudo and exit"
   echo -e "  \033[1m-p, --print-privileges\033[0m\n      print privileges to screen and exit"
-  echo -e "  \033[1m-S, --sites\033[0m\n      add sites to be blocked and start focus mode"
-  echo -e "  \033[1m-b, --blocklist\033[0m\n      add a stevenblack blocklist to add to hosts and start focus mode"
   echo -e "  \033[1m-d, --decrypt\033[0m\n      decrypt password and prompt to change it"
   echo -e "  \033[1m-s, --show-password\033[0m\n      to be used with --decrypt. shows new password user types when changing"
+  echo -e "  \033[1m-D, --date\033[0m\n      add a date to end the focus"
+  echo -e "  \033[1m-t, --time\033[0m\n      add a time to end the focus"
+  echo -e "  \033[1m-w, --add-website\033[0m\n      add a website to be blocked for some time"
+  echo -e "  \033[1m-a, --add-process\033[0m\n      add a process to be blocked for some time"
+  echo -e "  \033[1m-F, --add-file\033[0m\n      add a file or directory to be uneditable for some time"
+  echo -e "  \033[1m-S, --sites\033[0m\n      add sites to be blocked"
+  echo -e "  \033[1m-b, --blocklist\033[0m\n      add a stevenblack blocklist to add to hosts"
   echo -e "  \033[1m-h, --help\033[0m\n      show this message and exit"
 }
 
 decrypt() {
-  if [[ ! -e "$HOME/go/bin/tle]" ]]; then
+  local round
+  if [[ ! -e "$HOME/go/bin/tle" ]]; then
     echo "tle was not found at \"$HOME/go/bin/tle\""
     exit
   else
@@ -366,32 +380,155 @@ decrypt() {
       echo_red "Remove GRUB_PASSWORD-KEEP_SAFE.txt then try again"
       exit
     fi
-    # this should print it's own stdout which will say if it isn't time yet.
-    "$HOME/go/bin/tle" --decrypt -o "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock"
-  fi
-  if [[ -e $HOME/GRUB_PASSWORD-KEEP_SAFE.txt ]]; then
-    local old_password
-    old_password=$(awk 'NR==2 {print; exit}' "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt 2>/dev/null")
-    echo -e "\033[38;2;124;252;0m Current ROOT Password=$old_password \033[0m"
-    if [ "$SHOW_PASSWORD" == true ]; then
-      set +x
-      read -pr 'Enter new password for Root: ' new_password
-    else
-      read -spr 'Enter new password for Root: ' new_password
-      set +x
+    up_to_date_info=$(curl -sf https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/info)
+    if [[ $drand_failed == "true" ]]; then
+      # these are the likely defaults.
+      genesis="1692803367"
+      period="3"
+      hash="52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
+    elif [[ $drand_failed != "true" ]]; then
+      genesis=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $14}')
+      period=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $10}')
+      hash=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $19}')
     fi
-    echo "root:$new_password" | su --command chpasswd
-    if [[ "$restore_state" == "set -o xtrace" ]]; then
-      set -x
+    # this should print it's own stdout which will say if it isn't time yet.
+    decrypt_output=$("$HOME/go/bin/tle" --decrypt -o "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" 2>&1)
+    if [[ ! -z "$decrypt_output" ]]; then
+      round=$(echo decrypt_output | awk -F " " '{print $7}')
+      epoch=$((((round - 1) * period) + genesis))
+      selected_end=$(date -d "$epoch" "%X %x")
+      current_epoch=$(date -d +%s)
+      time_diff=$((epoch - current_epoch))
+      if [ "$time_diff" -lt 60 ]; then
+        echo "unlock in less than 60 seconds"
+      else
+        days=$((time_diff / 86400))
+        rem=$((time_diff % 86400))
+        hours=$((rem / 3600))
+        rem=$((rem % 3600))
+        minutes=$((rem / 60))
+        seconds=$((rem % 60))
+        parts=()
+        if [ "$days" -gt 0 ]; then parts+=("$days days"); fi
+        if [ "$hours" -gt 0 ]; then parts+=("$hours hours"); fi
+        if [ "$minutes" -gt 0 ]; then parts+=("$minutes minutes"); fi
+        if [ "$seconds" -gt 0 ]; then parts+=("$seconds seconds"); fi
+        count=${#parts[@]}
+        result=""
+        if [ "$count" -eq 1 ]; then
+          result="${parts[0]}"
+        elif [ "$count" -eq 2 ]; then
+          result="${parts[0]} and ${parts[1]}"
+        else
+          for ((i = 0; i < count - 1; i++)); do
+            result="${result}${parts[$i]}, "
+          done
+          result="${result}and ${parts[$((count - 1))]}"
+        fi
+      fi
+      if [[ ! -z "$selected_end" ]]; then
+        if [[ ! -z "$time_diff" ]]; then
+          echo "ends at $selected_end ($result remaining)"
+          true
+        fi
+        echo "ends at $selected_end"
+      fi
+    fi
+
+    if [[ -e $HOME/GRUB_PASSWORD-KEEP_SAFE.txt ]]; then
+      local old_password
+      old_password=$(awk 'NR==2 {print; exit}' "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt 2>/dev/null")
+      echo -e "\033[38;2;124;252;0m Current ROOT Password=$old_password \033[0m"
+      if [ "$SHOW_PASSWORD" == true ]; then
+        set +x
+        read -pr 'Enter new password for Root: ' new_password
+      else
+        read -spr 'Enter new password for Root: ' new_password
+        set +x
+      fi
+      echo "root:$new_password" | su --command chpasswd
+      if [[ "$restore_state" == "set -o xtrace" ]]; then
+        set -x
+      fi
     fi
   fi
 }
 up_to_date_JS() {
   cd "$HOME/CTCT/Custom_Vivaldi_JS(AI)/" || exit_cleanly
   for file in *js; do
-    anchor "$file" "INSERTS=(" "1" "$HOME/CTCT/vivaldimods.sh"
+    anchor "$file" "INSERTS=(" "1" "$HOME/CTCT/vivaldimods.sh" "false"
   done
   cd "$HOME"
+}
+add_X() {
+  local option="$1"
+  local options_option="$2"
+  local time="$3"
+  if ! up_to_date_info=$(curl -sf https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/info); then
+    drand_failed=true
+  fi
+  ending_epoch=$(date -d "$time" +%s)
+  if [[ $drand_failed == "true" ]]; then
+    # these are the likely defaults.
+    genesis="1692803367"
+    period="3"
+    hash="52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
+  elif [[ $drand_failed != "true" ]]; then
+    genesis=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $14}')
+    period=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $10}')
+    hash=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $19}')
+  fi
+  round=$((((ending_epoch - genesis) / period) + 1))
+
+  # this should quote the option in the file like so
+  # "option" "round"
+  if [ "$option" == "website" ]; then
+    echo "\"$options_option\"" "\"$round\"" | sudo tee -a "/etc/website-focus.txt"
+  elif [ "$option" == "process" ]; then
+    echo "\"$options_option\"" "\"$round\"" | sudo tee -a "/etc/process-focus.txt"
+  elif [ "$option" == "file" ]; then
+    echo "\"$options_option\"" "\"$round\"" | sudo tee -a "/etc/file-focus.txt"
+  else
+    exit 1
+  fi
+
+  echo "\"$options_option\" \"$round\"" | awk -F: -v option="$option" '{
+    if (NF >= 3) {
+        print "ERROR: Colons are meant to seperate the" option "from the duration."
+        exit 0
+    } else {
+        exit 1
+    }
+}'
+  if grep -qF "\"$options_option\" \"$round\"" "/etc/${option}-focus.txt"; then
+    echo -e "\033[38;2;124;252;0m added $options_option successfully \033[0m"
+  else
+    echo_red "ERROR. Couldn't confirm $options_option was added"
+  fi
+}
+multi_flag_error_check() {
+  local flag="$1"
+  local arg1_label="$2"
+  local arg1="$3"
+  local arg2="$4"
+  echo "$arg2" | awk -F: -v option="$option" -v flag="$flag" '{
+    if (NF >= 3) {
+        print "ERROR: Colons are meant to seperate the" option "from the duration."
+        print "You likely have a colon in your argument for" flag
+        exit 0
+    } else {
+        exit 1
+    }
+}'
+  fail=$? # this should get the exit code that awk gives.
+  if $fail -eq 0; then
+    exit
+  else
+    if [ -z "$arg1" ] || [ -z "$arg2" ]; then
+      echo_red "Error: $flag requires two arguments ($arg1_label and DURATION)."
+      exit 1
+    fi
+  fi
 }
 # Checks Ends
 # Rollback Functions Start
@@ -512,7 +649,8 @@ exit_cleanly() {
 }
 important_files=('/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pacman.d/hooks/grub1.hook' '/etc/pacman.d/hooks/grub2.hook' '/etc/pacman.d/hooks.bin/vivaldimods.sh' '/etc/systemd/system/closetabs.service' '/etc/systemd/system/CTCT.target.wants/' '/etc/matt_damon.sh' "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" '/etc/grub.d/40_custom' '/etc/grub.d/10_linux' '/opt/vivaldi/resources/vivaldi/window.html')
 important_files2=('/etc/sudoers' '/etc/sudoers.d' '/etc/sudoers.d/90-allowed-commands')
-important_files_to_append=('/etc/browsers.txt' '/etc/hosts')
+important_files_to_create=('/etc/file-focus.txt' '/etc/process-focus.txt' '/etc/website-focus.txt')
+important_files_to_append=('/etc/browsers.txt' '/etc/hosts' '/etc/file-focus.txt' '/etc/process-focus.txt' '/etc/website-focus.txt')
 backup_timestamp=$(date '+%Y-%m-%dT%H-%M-%S')
 readonly backup_timestamp
 restore_state=$(set +o | grep -F -- '-o xtrace' || true) # this checks if the script was run with bash -x so after it hides the passwords, it shows the output of -x
@@ -792,16 +930,52 @@ main() {
   fi
 
   # end of grub setup
+  verify_time_syntax() {
+    formatted_time=$(date -d "$selected_end_time" +"%H:%M:%S")
+    if [ "$formatted_time" == "$selected_end_time" ]; then
+      return 0
+    else
+      return 1
+    fi
+  }
+  verify_date_syntax() {
+    formatted_date=$(date -d "$selected_end_date" +"%m/%d/%y")
+    if [ "$formatted_date" == "$selected_end_date" ]; then
+      return 0
+    else
+      return 1
+    fi
+  }
   select_end() {
-    echo_red "Select a date to stop focussing..."
-    echo "Click enter to continue"
-    countdown 10
-    selected_end_date=$(dialog --clear --erase-on-exit --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
-    echo "You picked $selected_end_date. Click enter to continue"
-    countdown 10
-
-    echo_red "Select a time to end the script..."
-    selected_end_time=$(dialog --erase-on-exit --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
+    if [[ $DATE_MANUAL == true ]]; then
+      if ! verify_date_syntax; then
+        echo_red "Select a date to stop focussing..."
+        echo "Click enter to continue"
+        countdown 10
+        selected_end_date=$(dialog --clear --erase-on-exit --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
+        selected_end_date=$(dialog --clear --erase-on-exit --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
+        dialog --infobox "You picked ${selected_end_date:-nothing}" 0 0
+      fi
+    else
+      echo_red "Select a date to stop focussing..."
+      echo "Click enter to continue"
+      countdown 10
+      selected_end_date=$(dialog --clear --erase-on-exit --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
+      dialog --infobox "You picked ${selected_end_date:-nothing}. Click enter to continue to enter time" 0 0
+    fi
+    if [[ $TIME_MANUAL == true ]]; then
+      if ! verify_time_syntax; then
+        countdown 10
+        echo_red "Select a time to end the script..."
+        selected_end_time=$(dialog --erase-on-exit --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
+        dialog --infobox "You picked ${selected_end_time:-nothing}." 0 0
+      fi
+    else
+      countdown 10
+      echo_red "Select a time to end the script..."
+      selected_end_time=$(dialog --erase-on-exit --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
+      dialog --infobox "You picked ${selected_end_time:-nothing}." 0 0
+    fi
   }
   select_end
   ending="$selected_end_date $selected_end_time"
@@ -833,17 +1007,12 @@ main() {
   fi
 
   # Immutable File; last step
-  immuting "important_files"
-
-  immuting "applied_vivaldi_mods" "/opt/vivaldi/resources/vivaldi/"
-
-  for important_file_to_append in "${important_files_to_append[@]}"; do
-    if sudo chattr +a "$important_file_to_append"; then
-      reverse_operation+=("reverse_immute $important_file_to_append")
-    else
-      perform_rollback
-    fi
+  for file in "${important_files_to_create[@]}"; do
+    sudo touch "$file"
   done
+  immuting "important_files"
+  immuting "applied_vivaldi_mods" "/opt/vivaldi/resources/vivaldi/"
+  immuting "important_files_to_append" "" "a"
 
   # last use of sudo so it has to go last
   set +x
@@ -957,7 +1126,37 @@ while true; do
     CUSTOM_BLOCKLISTS+=("$2")
     shift 2
     ;;
-  -d | --decrypt)
+  -d | --date)
+    DATEOPT=1
+    DATE_MANUAL=true
+    selected_end_date="$2"
+    shift 2
+    ;;
+  -t | --time)
+    TIMEOPT=1
+    TIME_MANUAL=true
+    selected_end_time="$2"
+    shift 2
+    ;;
+  -w | --add-website)
+    IFS=':' read -r ADDWEBSITE_ARG ADDWEBSITE_ARG2 <<<"$2"
+    ADDWEBSITEOPT=1
+    multi_flag_error_check "--add-website" "WEBSITE" "$ADDWEBSITE_ARG" "$ADDWEBSITE_ARG2"
+    shift 2
+    ;;
+  -a | --add-process)
+    IFS=':' read -r ADDPROCESS_ARG ADDPROCESS_ARG2 <<<"$2"
+    ADDPROCCESSOPT=1
+    multi_flag_error_check "--add-process" "PROCESS" "$ADDPROCESS_ARG" "$ADDPROCESS_ARG2"
+    shift 2
+    ;;
+  -F | --add-file)
+    IFS=':' read -r ADDFILE_ARG ADDFILE_ARG2 <<<"$2"
+    ADDFILEOPT=1
+    multi_flag_error_check "--add-file" "FILE" "$ADDFILE_ARG" "$ADDFILE_ARG2"
+    shift 2
+    ;;
+  -D | --decrypt)
     DECRYPTOPT=1
     shift
     ;;
@@ -980,8 +1179,10 @@ while true; do
   esac
 done
 # Claude's idea on how to ensure the flags are standalone without writing the same code for each standalone flag
+mutually_exclusive_flags=("$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT" "$SITESOPT" "$BLOCKLISTOPT" "$DECRYPTOPT" "$SHOWPASSWORDOPT" "$ADDWEBSITEOPT" "$ADDPROCCESSOPT" "$ADDFILEOPT" "$DATEOPT" "$TIMEOPT")
+
 total_set=0
-for opt in "$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT" "$SITESOPT" "$BLOCKLISTOPT" "$DECRYPTOPT" "$SHOWPASSWORDOPT"; do
+for opt in "${mutually_exclusive_flags[@]}"; do
   ((opt == 1)) && ((++total_set))
 done
 standalone_values=("$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT")
@@ -997,10 +1198,7 @@ if [[ $SHOWPASSWORDOPT -eq 1 && $DECRYPTOPT -eq 0 ]]; then
   exit 2
 fi
 
-other_opts_set=0
-for opt in "$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT" "$SITESOPT" "$BLOCKLISTOPT"; do
-  ((opt == 1)) && ((++other_opts_set))
-done
+other_opts_set=$((total_set - DECRYPTOPT - SHOWPASSWORDOPT))
 if [[ $DECRYPTOPT -eq 1 && $other_opts_set -gt 0 ]]; then
   echo_red "--decrypt (with optional --show-password) is to be used on its own"
   exit 2
@@ -1026,6 +1224,24 @@ if [[ $PRINTPRIVILEGESOPT -eq 1 ]]; then
 fi
 if [[ $DECRYPTOPT -eq 1 ]]; then
   decrypt
+  exit
+fi
+if [[ "$ADDWEBSITEOPT" -eq 1 ]]; then
+  if [[ -e /etc/systemd/system/CTCT.target.wants/closetabs.service ]]; then
+    add_X 'website' "$ADDWEBSITE_ARG" "$ADDWEBSITE_ARG2"
+  fi
+  exit
+fi
+if [[ "$ADDPROCCESSOPT" -eq 1 ]]; then
+  if [[ -e /etc/systemd/system/CTCT.target.wants/closetabs.service ]]; then
+    add_X 'process' "$ADDPROCESS_ARG" "$ADDPROCESS_ARG2"
+  fi
+  exit
+fi
+if [[ "$ADDFILEOPT" -eq 1 ]]; then
+  if [[ -e /etc/systemd/system/CTCT.target.wants/closetabs.service ]]; then
+    add_X 'file' "$ADDFILE_ARG" "$ADDFILE_ARG2"
+  fi
   exit
 fi
 
