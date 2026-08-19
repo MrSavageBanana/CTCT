@@ -93,9 +93,6 @@ missing=$(diff <(echo "$mirror") <(echo "$current") | grep '^<' | sed 's/^< //')
 if [ -z "$missing" ]; then
   echo "Nothing missing. /etc/hosts is up to date."
 else
-  if [[ "$restore_state" == "set -o xtrace" ]]; then
-    set -x
-  fi
   # Claude gave me this idea for implementing my  countdown
   count=0
   while IFS= read -r; do
@@ -106,6 +103,9 @@ else
   echo
   chattr -a /etc/hosts
   echo "$missing" | sudo tee -a /etc/hosts >/dev/null
+  if [[ "$restore_state" == "set -o xtrace" ]]; then
+    set -x
+  fi
   chattr +a /etc/hosts
   echo "Done."
 fi
