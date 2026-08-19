@@ -401,9 +401,11 @@ print_help() {
 
 time_left() {
   local time_diff="$1"
-  if [ "$time_diff" -lt 60 ]; then
-    #     echo "unlock in less than 60 seconds"
-    #   else
+  if [ "$time_diff" -lt 0 ]; then
+    result="0 seconds"
+  elif [ "$time_diff" -lt 60 ]; then
+    result="less than 60 seconds"
+  else
     days=$((time_diff / 86400))
     rem=$((time_diff % 86400))
     hours=$((rem / 3600))
