@@ -402,8 +402,8 @@ print_help() {
 time_left() {
   local time_diff="$1"
   if [ "$time_diff" -lt 60 ]; then
-    echo "unlock in less than 60 seconds"
-  else
+    #     echo "unlock in less than 60 seconds"
+    #   else
     days=$((time_diff / 86400))
     rem=$((time_diff % 86400))
     hours=$((rem / 3600))
@@ -464,7 +464,7 @@ decrypt() {
       time_diff=$((epoch - current_epoch))
       time_left "$time_diff"
       if [[ ! -z "$selected_end" ]]; then
-        if [[ ! -z "$time_diff" || ! -z "$result" ]]; then
+        if [[ ! -z "$time_diff" && ! -z "$result" ]]; then
           echo "Ends at $selected_end ($result remaining)"
         else
           echo "Ends at $selected_end"

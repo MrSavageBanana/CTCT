@@ -45,15 +45,15 @@ closetabs() {
 closetabs_focus() {
   local file="/etc/website-focus.txt"
   local -a domains=() ids=()
-  # check if there is any outdate websites existing
+  # check if there is any outdated websites existing
   current_round=$(curl -Ss https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/latest | awk -F '[\":,]' '{print $4}')
-  awk -v current_round="$current_round" -v file="$file" -F '\"' '{
-    round_to_end = $4
-    if (round_to_end < current_round) {
-        cmd = "sudo sed -i '"'"'/" round_to_end "/d'"'"' " file
-        system(cmd)
-    }
-}' "$file"
+  # file is append-only now, so we can't sed the dead entries out of it.
+  # Instead build an in-memory copy with only the entries that are still
+  # live (last round wins if a site was appended more than once).
+  live_entries=$(awk -v current_round="$current_round" -F '"' '
+    { round[$2]=$4 }
+    END { for (site in round) if (round[site] >= current_round) print "\""site"\" \""round[site]"\"" }
+  ' "$file")
 
   # get the existing domains
   while IFS=$'\t' read -r domain id; do
@@ -66,7 +66,37 @@ closetabs_focus() {
     '
   )
   for i in "${!domains[@]}"; do
-    if grep -qF "${domains[$i]}" "$file"; then
+    if grep -qF "${domains[$i]}" <<<"$live_entries"; then
+      curl -s "http://localhost:9222/json/close/${ids[$i]}" >/dev/null
+    fi
+  done
+
+}
+closetabs_focus() {
+  local file="/etc/website-focus.txt"
+  local -a domains=() ids=()
+  # check if there is any outdated websites existing
+  current_round=$(curl -Ss https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/latest | awk -F '[\":,]' '{print $4}')
+  # file is append-only now, so we can't sed the dead entries out of it.
+  # Instead build an in-memory copy with only the entries that are still
+  # live (last round wins if a site was appended more than once).
+  live_entries=$(awk -v current_round="$current_round" -F '"' '
+    { round[$2]=$4 }
+    END { for (site in round) if (round[site] >= current_round) print "\""site"\" \""round[site]"\"" }
+  ' "$file")
+
+  # get the existing domains
+  while IFS=$'\t' read -r domain id; do
+    domains+=("$domain")
+    ids+=("$id")
+  done < <(
+    curl -s http://localhost:9222/json/list | awk -F '"' '
+    /"id":/ { id = $4 }
+    /"url": "https?:\/\// { sub(/^https?:\/\//, "", $4); print $4 "\t" id }
+    '
+  )
+  for i in "${!domains[@]}"; do
+    if grep -qF "${domains[$i]}" <<<"$live_entries"; then
       curl -s "http://localhost:9222/json/close/${ids[$i]}" >/dev/null
     fi
   done
@@ -74,7 +104,14 @@ closetabs_focus() {
 }
 focus() {
   local file="/etc/process-focus.txt"
-  process=$(awk -F '"' '{print $2}' "$file")
+  current_round=$(curl -Ss https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/latest | awk -F '[\":,]' '{print $4}')
+  # file is append-only now, so we can't sed the dead entries out of it.
+  # Instead build an in-memory list of process names that are still live
+  # (last round wins if a name was appended more than once).
+  live_processes=$(awk -v current_round="$current_round" -F '"' '
+    { round[$2]=$4 }
+    END { for (p in round) if (round[p] >= current_round) print p }
+  ' "$file")
   PIDS=()
   # claude helped with parsing multiple entries. This whole mess is claude's.
   # It is this complicated to ensure it can manage any character in a file(except newlines)
@@ -83,7 +120,7 @@ focus() {
     escaped=$(printf '%s' "$process" | sed -e 's/[.[\*^$()+?{|\\]/\\&/g')
     [[ -z "$escaped" ]] && continue # i ain't taking any risks. I don't want any empty strings.
     mapfile -t -O "${#PIDS[@]}" PIDS < <(pgrep -f -- "$escaped")
-  done < <(awk -F '\"' '{print $2}' "$file")
+  done <<<"$live_processes"
   # dedupe, since two names could theoretically match overlapping PIDs
   mapfile -t PIDS < <(printf '%s\n' "${PIDS[@]}" | sort -un)
   for pid in "${PIDS[@]}"; do
@@ -91,14 +128,6 @@ focus() {
       return
     fi
   done
-  current_round=$(curl -Ss https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/latest | awk -F '[\":,]' '{print $4}')
-  awk -v current_round="$current_round" -v file="$file" -F '\"' '{
-      round_to_end = $4
-      if (round_to_end < current_round) {
-      cmd = "sudo sed -i '"'"'/" round_to_end "/d'"'"' " file
-      system(cmd)
-      }
-      }' "$file"
   for pid2 in "${PIDS[@]}"; do
     kill "$pid2"
   done
@@ -110,7 +139,6 @@ focus_attr() {
   focus_file = $2
   round_to_end = $4
   if (round_to_end < current_round) {
-  cmd = "sudo sed -i '"'"'/" round_to_end "/d'"'"' " file
   cmd2 = "sudo chattr -i " focus_file
   system(cmd2)
   system(cmd)
