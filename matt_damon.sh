@@ -83,7 +83,7 @@ focus() {
     escaped=$(printf '%s' "$process" | sed -e 's/[.[\*^$()+?{|\\]/\\&/g')
     [[ -z "$escaped" ]] && continue # i ain't taking any risks. I don't want any empty strings.
     mapfile -t -O "${#PIDS[@]}" PIDS < <(pgrep -f -- "$escaped")
-  done < <(awk -F '"' '{print $2}' "$file")
+  done < <(awk -F '\"' '{print $2}' "$file")
   # dedupe, since two names could theoretically match overlapping PIDs
   mapfile -t PIDS < <(printf '%s\n' "${PIDS[@]}" | sort -un)
   for pid in "${PIDS[@]}"; do
@@ -117,6 +117,7 @@ focus_attr() {
  } else {
   cmd3 = "sudo chattr +i " focus_file
   system(cmd3)
+  }
   }' "$file"
 }
 
@@ -148,10 +149,15 @@ check_browser() {
       kill "$pid3"
     done
   elif [[ "$cmdline" == "--remote-debugging-port=9222" ]]; then
+    # apparantely, i can see these echos in journalctl so i am going to add them even if they aren't really ever seen
+    echo "started closetabs"
     closetabs
+    echo "started closetabs_focus"
     closetabs_focus
   fi
+  echo "started focus_attr"
   focus_attr
+  echo "started focus"
   focus
 }
 

@@ -5,11 +5,13 @@
 # For disabling the messages when the exit message is there:
 # shellcheck disable=SC2317
 # shellcheck disable=SC2329
-exit         # if this is accidentally ran. I don't want to ruin my computer. Remove this when needed and the shellcheck lines above
-echo_red() { # for things that needs the users attention
+exit                                                     # if this is accidentally ran. I don't want to ruin my computer. Remove this when needed and the shellcheck lines above
+restore_state=$(set +o | grep -F -- '-o xtrace' || true) # this checks if the script was run with bash -x so after it hides the passwords, it shows the output of -x
+echo_red() {                                             # for things that needs the users attention
   builtin echo -e "\033[38;2;255;0;0m >>> $* <<< \033[0m"
 }
 countdown() {
+  set +x
   secs="$1"
   while [ "$secs" -ge 0 ]; do
     echo -ne "Auto Continuing in $secs seconds...\033[0K\r"
@@ -18,6 +20,9 @@ countdown() {
     fi
     ((secs--))
   done
+  if [[ "$restore_state" == "set -o xtrace" ]]; then
+    set -x
+  fi
 }
 idk_a_good_name() {
   local -n chosen_array="$1"
@@ -31,8 +36,10 @@ immuting() {
   local -n chosen_array="$1"
   local chosen_leading_path="$2"
   local chosen_attribute="$3"
-  chosen_attribute=i
   local chosen_item
+  if [[ -z "$chosen_attribute" ]]; then
+    chosen_attribute=i
+  fi
   for chosen_item in "${chosen_array[@]}"; do
     if sudo chattr +"$chosen_attribute" "$chosen_leading_path$chosen_item"; then
       reverse_operation+=("reverse_immute" "$chosen_leading_path$chosen_item")
@@ -53,8 +60,8 @@ FILE_PATH="$SCRIPT_DIR/$SCRIPT_NAME"
 # flag idea: a quiet flag which will remove any output that may show up.
 # The users can specify what they want gone and
 # it will write to a variable that will be checked before the variable is used
-SHORT="vfP:pS:b:Dshd:t:w:a:F:"
-LONG="validate,fix,privileges:,print-privileges,sites:,blocklist:,decrypt,show-password,help,date:,time:,add-website:,add-process:,add-file:"
+SHORT="vfP:pS:b:Dshd:w:a:F:"
+LONG="validate,fix,privileges:,print-privileges,sites:,blocklist:,decrypt,show-password,help,date:,add-website:,add-process:,add-file:"
 if ! PARSED=$(getopt --options "$SHORT" --longoptions "$LONG" --name "$0" -- "$@"); then
   echo "Try '$FILE_PATH --help' for more information"
   exit 2
@@ -367,15 +374,15 @@ print_help() {
   echo -e "\n\033[1mOPTIONS\033[0m"
   echo -e "  \033[1m-v, --validate\033[0m\n      check that the script can run without overwriting files or missing dependencies"
   echo -e "  \033[1m-f, --fix\033[0m\n      download any missing dependencies and move overwritten files to $HOME/.local/share/Trash/files/"
-  echo -e "  \033[1m-P, --privileges\033[0m\n      add binary you want to be able to run with sudo and exit"
   echo -e "  \033[1m-p, --print-privileges\033[0m\n      print privileges to screen and exit"
+  echo -e "  \033[1m-P, --privileges\033[0m\n      add binary you want to be able to run with sudo and exit"
+  echo -e "  \033[1m-w, --add-website\033[0m\n      add a website to be blocked for some time"
+  echo -e "  \033[1m-a, --add-process\033[0m\n      add a process to be blocked for some time"
+  echo -e "  \033[1m-F, --add-file\033[0m\n      add a file or directory to be immutable for some time"
   echo -e "  \033[1m-D, --decrypt\033[0m\n      decrypt password and prompt to change it"
   echo -e "  \033[1m-s, --show-password\033[0m\n      to be used with --decrypt. shows new password user types when changing"
   echo -e "  \033[1m-d, --date\033[0m\n      add a date to end the focus. format: MM/DD/YY"
   echo -e "  \033[1m-t, --time\033[0m\n      add a time to end the focus. format: HH:MM:SS"
-  echo -e "  \033[1m-w, --add-website\033[0m\n      add a website to be blocked for some time"
-  echo -e "  \033[1m-a, --add-process\033[0m\n      add a process to be blocked for some time"
-  echo -e "  \033[1m-F, --add-file\033[0m\n      add a file or directory to be immutable for some time"
   echo -e "  \033[1m-S, --sites\033[0m\n      add sites to be blocked"
   echo -e "  \033[1m-b, --blocklist\033[0m\n      add a stevenblack blocklist to add to hosts"
   echo -e "  \033[1m-h, --help\033[0m\n      show this message and exit"
@@ -506,11 +513,12 @@ add_X() {
   echo "\"$options_option\" \"$round\"" | awk -F: -v option="$option" '{
     if (NF >= 3) {
         print "ERROR: Colons are meant to seperate the" option "from the duration."
-        exit 0
-    } else {
         exit 1
+    } else {
+        exit 0
     }
 }'
+
   if grep -qF "\"$options_option\" \"$round\"" "/etc/${option}-focus.txt"; then
     echo -e "\033[38;2;124;252;0m added $options_option successfully \033[0m"
   else
@@ -526,13 +534,13 @@ multi_flag_error_check() {
     if (NF >= 3) {
         print "ERROR: Colons are meant to seperate the" option "from the duration."
         print "You likely have a colon in your argument for" flag
-        exit 0
-    } else {
         exit 1
+    } else {
+        exit 0
     }
 }'
   fail=$? # this should get the exit code that awk gives.
-  if $fail -eq 0; then
+  if [[ "$fail" -eq 1 ]]; then
     exit
   else
     if [ -z "$arg1" ] || [ -z "$arg2" ]; then
@@ -660,7 +668,6 @@ exit_cleanly() {
 }
 backup_timestamp=$(date '+%Y-%m-%dT%H-%M-%S')
 readonly backup_timestamp
-restore_state=$(set +o | grep -F -- '-o xtrace' || true) # this checks if the script was run with bash -x so after it hides the passwords, it shows the output of -x
 set +x
 readonly manual_password="wompwomp" # manual_password is for debugging/developing only
 # TODO: to make more random, give a range instead of just 32, it could be another random number? Ensures that it is harder to hashcat(i think it makes it harder)
@@ -937,72 +944,54 @@ main() {
   fi
 
   # end of grub setup
-  verify_time_syntax() {
-    formatted_time=$(date -d "$selected_end_time" +%H:%M:%S)
-    if [ "$formatted_time" == "$selected_end_time" ]; then
-      return 0
-    else
-      TIME_MANUAL=false
-      return 1
-    fi
-    epoch_formatted_date=$(date -d "$selected_end_date" +%s)
-    today=$(date -d today +%s)
-    if [[ "$epoch_formatted_date" -gt "$today" ]]; then
-      return 0
-    else
-      TIME_MANUAL=false
-      return 1
-    fi
-  }
   verify_date_syntax() {
-    formatted_date=$(date -d "$selected_end_date" +%m/%d/%y)
-    if [ "$formatted_date" == "$selected_end_date" ]; then
-      return 0
-    else
-      return 1
-      DATE_MANUAL=false
-    fi
-    epoch_formatted_date=$(date -d "$selected_end_date" +%s)
+    formatted_date=$(date -d "$ending" "+%m/%d/%y %H:%M:%S")
+    epoch_formatted_date=$(date -d "$ending" +%s 2>/dev/null)
     today=$(date -d today +%s)
-    if [[ "$epoch_formatted_date" -gt "$today" ]]; then
-      return 0
-    else
-      return 1
+    if [ "$formatted_date" != "$ending" ] || [ "$epoch_formatted_date" -lt "$today" ]; then
       DATE_MANUAL=false
+      echo "DATE FLAG HAS BEEN REJECTED"
+      echo "formatted_date:"
+      echo "$formatted_date"
+      echo "epoch_formatted_date"
+      echo "$epoch_formatted_date"
+      echo "today"
+      echo "$today"
+      countdown 15
     fi
   }
+  if [[ ! -z "$ending" ]]; then # if it is not empty at this point, flag was used
+    verify_date_syntax
+  fi
   select_end() {
-    if [[ $DATE_MANUAL == true ]]; then
-      if ! verify_date_syntax; then
-        echo_red "Select a date to stop focussing..."
-        echo "Click enter to continue"
-        countdown 10
-        selected_end_date=$(dialog --clear --erase-on-exit --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
-        dialog --infobox "You picked ${selected_end_date:-nothing}" 0 0
-      fi
-    else
-      echo_red "Select a date to stop focussing..."
-      echo "Click enter to continue"
-      countdown 10
-      selected_end_date=$(dialog --clear --erase-on-exit --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
-      dialog --infobox "You picked ${selected_end_date:-nothing}" 0 0
+    echo_red "Select a date to stop focussing..."
+    echo "Click enter to continue"
+    countdown 10
+    set +x
+    #selected_end_date=$(dialog --clear --erase-on-exit --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
+    selected_end_date=$(dialog --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
+    dialog --infobox "You picked ${selected_end_date:-nothing}" 0 0
+    if [[ "$restore_state" == "set -o xtrace" ]]; then
+      set -x
     fi
-    if [[ $TIME_MANUAL == true ]]; then
-      if ! verify_time_syntax; then
-        countdown 10
-        echo_red "Select a time to end the script..."
-        selected_end_time=$(dialog --erase-on-exit --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
-        dialog --infobox "You picked ${selected_end_time:-nothing}" 0 0
-      fi
-    else
-      countdown 10
-      echo_red "Select a time to end the script..."
-      selected_end_time=$(dialog --erase-on-exit --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
-      dialog --infobox "You picked ${selected_end_time:-nothing}" 0 0
+
+    countdown 10
+    echo_red "Select a time to end the script..."
+    set +x
+    #selected_end_time=$(dialog --erase-on-exit --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
+    selected_end_time=$(dialog --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
+    dialog --infobox "You picked ${selected_end_time:-nothing}" 0 0
+    if [[ "$restore_state" == "set -o xtrace" ]]; then
+      set -x
     fi
+    countdown 5
+    # clear
   }
-  select_end
-  ending="$selected_end_date $selected_end_time"
+  echo "DEBUG: DATE_MANUAL is currently '$DATE_MANUAL'"
+  if [ "$DATE_MANUAL" == false ]; then
+    select_end
+    ending="$selected_end_date $selected_end_time"
+  fi
   ending_epoch=$(date -d "$ending" +%s)
   if [[ $drand_failed == "true" ]]; then
     # these are the likely defaults.
@@ -1014,23 +1003,28 @@ main() {
     period=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $10}')
     hash=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $19}')
   fi
-  round=$((((ending_epoch - genesis) / period) + 1))
 
-  if [[ -e "$HOME/go/bin/tle" ]]; then
+  if [[ ! -e "$HOME/go/bin/tle" ]]; then
+    echo_red "tle wasn't installed"
+    perform_rollback
+  fi
+
+  while true; do # allows the user infinite tries to put a time and date which is valid
+    round=$((((ending_epoch - genesis) / period) + 1))
     "$HOME/go/bin/tle" -e -c "$hash" -r "$round" -o "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt"
     if [[ ! -s "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" ]]; then
       echo_red round "$round" is in the past. Try again
       DATE_MANUAL=false
       TIME_MANUAL=false
       select_end
+      ending="$selected_end_date $selected_end_time"
+      ending_epoch=$(date -d "$ending" +%s)
     else
       reverse_operation+=("undo_tle_lock")
-      shred "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt" # shred will overwrite the file and ensure that any file recovery fails. A person could run SystemRescue and recover the file easily if the file wasn't overwritten
+      shred "$HOME/GRUB_PASSWORD-KEEP_SAFE.txt"
+      break
     fi
-  else
-    echo_red "tle wasn't installed"
-    perform_rollback
-  fi
+  done
 
   # Immutable File; last step
   for file in "${important_files_to_create[@]}"; do
@@ -1120,6 +1114,7 @@ BLOCKLISTOPT=0
 DECRYPTOPT=0
 SHOWPASSWORDOPT=0
 EDIT_BLOCKLIST=false
+DATE_MANUAL=false
 
 while true; do
   case "$1" in
@@ -1155,13 +1150,7 @@ while true; do
   -d | --date)
     DATEOPT=1
     DATE_MANUAL=true
-    selected_end_date="$2"
-    shift 2
-    ;;
-  -t | --time)
-    TIMEOPT=1
-    TIME_MANUAL=true
-    selected_end_time="$2"
+    ending="$2"
     shift 2
     ;;
   -w | --add-website)
