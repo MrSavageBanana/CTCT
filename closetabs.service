@@ -4,7 +4,7 @@ StartLimitIntervalSec=0
 
 [Service]
 WorkingDirectory=/etc/
-ExecStart=/usr/bin/bash /etc/matt_damon.sh
+ExecStart=/usr/bin/bash -x /etc/matt_damon.sh
 Restart=always 
 RestartSec=1
 User=root
