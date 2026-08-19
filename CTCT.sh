@@ -60,8 +60,8 @@ FILE_PATH="$SCRIPT_DIR/$SCRIPT_NAME"
 # flag idea: a quiet flag which will remove any output that may show up.
 # The users can specify what they want gone and
 # it will write to a variable that will be checked before the variable is used
-SHORT="vfP:pS:b:Dshd:w:a:F:"
-LONG="validate,fix,privileges:,print-privileges,sites:,blocklist:,decrypt,show-password,help,date:,add-website:,add-process:,add-file:"
+SHORT="vfP:pS:b:Dshd:w:a:F:tc:"
+LONG="validate,fix,privileges:,print-privileges,sites:,blocklist:,decrypt,show-password,help,date:,add-website:,add-process:,add-file:,check-current-focus:,show-tabs"
 if ! PARSED=$(getopt --options "$SHORT" --longoptions "$LONG" --name "$0" -- "$@"); then
   echo "Try '$FILE_PATH --help' for more information"
   exit 2
@@ -388,8 +388,42 @@ print_help() {
   echo -e "  \033[1m-h, --help\033[0m\n      show this message and exit"
 }
 
+time_left() {
+  local time_diff="$1"
+  if [ "$time_diff" -lt 60 ]; then
+    echo "unlock in less than 60 seconds"
+  else
+    days=$((time_diff / 86400))
+    rem=$((time_diff % 86400))
+    hours=$((rem / 3600))
+    rem=$((rem % 3600))
+    minutes=$((rem / 60))
+    seconds=$((rem % 60))
+    parts=()
+    if [ "$days" -gt 0 ]; then parts+=("$days days"); fi
+    if [ "$hours" -gt 0 ]; then parts+=("$hours hours"); fi
+    if [ "$minutes" -gt 0 ]; then parts+=("$minutes minutes"); fi
+    if [ "$seconds" -gt 0 ]; then parts+=("$seconds seconds"); fi
+    count=${#parts[@]}
+    result=""
+    if [ "$count" -eq 1 ]; then
+      result="${parts[0]}"
+    elif [ "$count" -eq 2 ]; then
+      result="${parts[0]} and ${parts[1]}"
+    else
+      for ((i = 0; i < count - 1; i++)); do
+        result="${result}${parts[$i]}, "
+      done
+      result="${result}and ${parts[$((count - 1))]}"
+    fi
+  fi
+}
 decrypt() {
   local round
+  local epoch
+  local selected_end
+  local current_epoch
+  local time_diff
   if [[ ! -e "$HOME/go/bin/tle" ]]; then
     echo "tle was not found at \"$HOME/go/bin/tle\""
     exit
@@ -417,35 +451,9 @@ decrypt() {
       selected_end=$(date -d "@$epoch" "+%X %x")
       current_epoch=$(date +%s)
       time_diff=$((epoch - current_epoch))
-      if [ "$time_diff" -lt 60 ]; then
-        echo "unlock in less than 60 seconds"
-      else
-        days=$((time_diff / 86400))
-        rem=$((time_diff % 86400))
-        hours=$((rem / 3600))
-        rem=$((rem % 3600))
-        minutes=$((rem / 60))
-        seconds=$((rem % 60))
-        parts=()
-        if [ "$days" -gt 0 ]; then parts+=("$days days"); fi
-        if [ "$hours" -gt 0 ]; then parts+=("$hours hours"); fi
-        if [ "$minutes" -gt 0 ]; then parts+=("$minutes minutes"); fi
-        if [ "$seconds" -gt 0 ]; then parts+=("$seconds seconds"); fi
-        count=${#parts[@]}
-        result=""
-        if [ "$count" -eq 1 ]; then
-          result="${parts[0]}"
-        elif [ "$count" -eq 2 ]; then
-          result="${parts[0]} and ${parts[1]}"
-        else
-          for ((i = 0; i < count - 1; i++)); do
-            result="${result}${parts[$i]}, "
-          done
-          result="${result}and ${parts[$((count - 1))]}"
-        fi
-      fi
+      time_left "$time_diff"
       if [[ ! -z "$selected_end" ]]; then
-        if [[ ! -z "$time_diff" ]]; then
+        if [[ ! -z "$time_diff" || ! -z "$result" ]]; then
           echo "Ends at $selected_end ($result remaining)"
         else
           echo "Ends at $selected_end"
@@ -548,6 +556,77 @@ multi_flag_error_check() {
       exit 1
     fi
   fi
+}
+check-focus() {
+  local file="$1"
+  local hash="52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
+  local up_to_date_info genesis period drand_failed=false
+
+  if up_to_date_info=$(curl -sf "https://api.drand.sh/${hash}/info"); then
+    genesis=$(echo "$up_to_date_info" | awk -F '[":,]' '{print $14}')
+    period=$(echo "$up_to_date_info" | awk -F '[":,]' '{print $10}')
+  else
+    drand_failed=true
+  fi
+
+  if [[ "$drand_failed" == "true" || -z "$genesis" || -z "$period" ]]; then
+    # these are the likely defaults.
+    genesis="1692803367"
+    period="3"
+  fi
+
+  local line round_to_end epoch selected_end current_epoch time_diff
+  current_epoch=$(date +%s)
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" ]] && continue
+    round_to_end=$(awk -F '"' '{print $4}' <<<"$line")
+    [[ -z "$round_to_end" ]] && continue
+
+    epoch=$((((round_to_end - 1) * period) + genesis))
+    selected_end=$(date -d "@$epoch" "+%X %x")
+    time_diff=$((epoch - current_epoch))
+
+    time_left "$time_diff"
+
+    if [[ -n "$selected_end" ]]; then
+      echo "Ends at $selected_end ($result remaining)"
+    fi
+  done <"$file"
+}
+display_sites_with_N() {
+  select url in $(curl -s http://localhost:9222/json/list | awk -F '"' '/"url": "https?:\/\// { sub(/^https?:\/\//, "", $4); print $4 }'); do
+    echo "You selected: $url"
+    echo -e " Format Examples:"
+    echo -e "    \033[1m'3 min'\033[0m           ends the focus in 3 minutes"
+    echo -e "    \033[1m'3 days 2 hours'\033[0m  ends the focus in 3 days and 2 hours"
+    echo -e "    \033[1m'3 friday'\033[0m        ends the focus 3 fridays from now"
+    echo -e "    \033[1m'sunday'\033[0m          ends the focus the next sunday"
+    echo -e "    \033[1m'tomorrow 12am'\033[0m   ends the focus at 12:00 AM tomorrow"
+    read -rp "Enter a time (in natural language) to unblock $url:" "time_given"
+    multi_flag_error_check "--add-website" "WEBSITE" "$url" "$time_given"
+    add_X 'website' "$url" "$time_given"
+    break
+  done
+}
+check-sites() {
+  curl -s http://localhost:9222/json/list | awk -F '"' '/"url": "https?:\/\// { sub(/^https?:\/\//, "", $4); print $4 }'
+  # Source - https://stackoverflow.com/a/226724
+  # Posted by Myrddin Emrys, modified by community. See post 'Timeline' for change history
+  # Retrieved 2026-08-19, License - CC BY-SA 4.0
+
+  echo "Do you want to temporarily block an open tab?"
+  select strictreply in "Yes" "No"; do
+    relaxedreply=${strictreply:-$REPLY}
+    case $relaxedreply in
+    Yes | yes | y)
+      display_sites_with_N
+      exit
+      ;;
+    No | no | n) exit ;;
+    esac
+  done
+
 }
 # Checks Ends
 # Rollback Functions Start
@@ -1171,6 +1250,15 @@ while true; do
     multi_flag_error_check "--add-file" "FILE" "$ADDFILE_ARG" "$ADDFILE_ARG2"
     shift 2
     ;;
+  -c | --check-current-focus)
+    CHECKCURRENTFOCUSOPT=1
+    FLAG="$2"
+    shift 2
+    ;;
+  -t | --show-tabs)
+    SHOWTABSOPT=1
+    shift
+    ;;
   -D | --decrypt)
     DECRYPTOPT=1
     shift
@@ -1194,7 +1282,7 @@ while true; do
   esac
 done
 # Claude's idea on how to ensure the flags are standalone without writing the same code for each standalone flag
-mutually_exclusive_flags=("$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT" "$SITESOPT" "$BLOCKLISTOPT" "$DECRYPTOPT" "$SHOWPASSWORDOPT" "$ADDWEBSITEOPT" "$ADDPROCCESSOPT" "$ADDFILEOPT" "$DATEOPT" "$TIMEOPT")
+mutually_exclusive_flags=("$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT" "$SITESOPT" "$BLOCKLISTOPT" "$DECRYPTOPT" "$SHOWPASSWORDOPT" "$ADDWEBSITEOPT" "$ADDPROCCESSOPT" "$ADDFILEOPT" "$DATEOPT" "$TIMEOPT" "$CHECKCURRENTFOCUSOPT" "$SHOWTABSOPT")
 
 total_set=0
 for opt in "${mutually_exclusive_flags[@]}"; do
@@ -1259,6 +1347,14 @@ if [[ "$ADDFILEOPT" -eq 1 ]]; then
   fi
   exit
 fi
+if [[ $CHECKCURRENTFOCUSOPT -eq 1 ]]; then
+  check-focus "$FLAG"
+  exit
+fi
 
+if [[ $SHOWTABSOPT -eq 1 ]]; then
+  display_sites_with_N
+  exit
+fi
 main
 exit

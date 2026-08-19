@@ -46,8 +46,8 @@ closetabs_focus() {
   local file="/etc/website-focus.txt"
   local -a domains=() ids=()
   # check if there is any outdate websites existing
-  current_round=$(curl -Ss https://api.drand.sh/public/latest | awk -F '[\":,]' '{print $4}')
-  awk -v current_round="$current_round" -v file="$file" -F '"' '{
+  current_round=$(curl -Ss https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/latest | awk -F '[\":,]' '{print $4}')
+  awk -v current_round="$current_round" -v file="$file" -F '\"' '{
     round_to_end = $4
     if (round_to_end < current_round) {
         cmd = "sudo sed -i '"'"'/" round_to_end "/d'"'"' " file
@@ -91,7 +91,7 @@ focus() {
       return
     fi
   done
-  current_round=$(curl -Ss https://api.drand.sh/public/latest | awk -F '[\":,]' '{print $4}')
+  current_round=$(curl -Ss https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/latest | awk -F '[\":,]' '{print $4}')
   awk -v current_round="$current_round" -v file="$file" -F '\"' '{
       round_to_end = $4
       if (round_to_end < current_round) {
@@ -105,8 +105,8 @@ focus() {
 }
 focus_attr() {
   local file="/etc/file-focus.txt"
-  current_round=$(curl -Ss https://api.drand.sh/public/latest | awk -F '[\":,]' '{print $4}')
-  awk -v current_round="$current_round" -v file="$file" -F '"' '{
+  current_round=$(curl -Ss https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/latest | awk -F '[\":,]' '{print $4}')
+  awk -v current_round="$current_round" -v file="$file" -F '\"' '{
   focus_file = $2
   round_to_end = $4
   if (round_to_end < current_round) {
