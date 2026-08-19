@@ -368,24 +368,35 @@ print_help() {
   echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-w\033[0m | \033[1m--add-website\033[0m WEBSITE\033[1m:\033[0mDURATION"
   echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-a\033[0m | \033[1m--add-process\033[0m PROCESS\033[1m:\033[0mDURATION"
   echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-F\033[0m | \033[1m--add-file\033[0m FILE\033[1m:\033[0mDURATION"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-c\033[0m | \033[1m--check-current-focus\033[0m FLAG"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-t\033[0m | \033[1m--show-tabs\033[0m"
   echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-D\033[0m \033[1m-s\033[0m"
-  echo -e "  \033[1m$SCRIPT_NAME\033[0m [\033[1m-d\033[0m | \033[1m--date\033[0m DATE] [\033[1m-t\033[0m | \033[1m--time\033[0m TIME] [\033[1m-S\033[0m | \033[1m--sites\033[0m SITE] [\033[1m-b\033[0m | \033[1m--blocklist\033[0m BLOCKLIST]"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m [\033[1m-d\033[0m | \033[1m--date\033[0m DATE] [\033[1m-S\033[0m | \033[1m--sites\033[0m SITE] [\033[1m-b\033[0m | \033[1m--blocklist\033[0m BLOCKLIST]"
   echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-h\033[0m | \033[1m--help\033[0m"
   echo -e "\n\033[1mOPTIONS\033[0m"
   echo -e "  \033[1m-v, --validate\033[0m\n      check that the script can run without overwriting files or missing dependencies"
   echo -e "  \033[1m-f, --fix\033[0m\n      download any missing dependencies and move overwritten files to $HOME/.local/share/Trash/files/"
-  echo -e "  \033[1m-p, --print-privileges\033[0m\n      print privileges to screen and exit"
   echo -e "  \033[1m-P, --privileges\033[0m\n      add binary you want to be able to run with sudo and exit"
-  echo -e "  \033[1m-w, --add-website\033[0m\n      add a website to be blocked for some time"
-  echo -e "  \033[1m-a, --add-process\033[0m\n      add a process to be blocked for some time"
-  echo -e "  \033[1m-F, --add-file\033[0m\n      add a file or directory to be immutable for some time"
+  echo -e "  \033[1m-p, --print-privileges\033[0m\n      print privileges to screen and exit"
   echo -e "  \033[1m-D, --decrypt\033[0m\n      decrypt password and prompt to change it"
   echo -e "  \033[1m-s, --show-password\033[0m\n      to be used with --decrypt. shows new password user types when changing"
-  echo -e "  \033[1m-d, --date\033[0m\n      add a date to end the focus. format: MM/DD/YY"
-  echo -e "  \033[1m-t, --time\033[0m\n      add a time to end the focus. format: HH:MM:SS"
+  echo -e "  \033[1m-d, --date\033[0m\n      add a date to end the focus. format: MM\033[1m/\033[0mDD\033[1m/\033[0mYY HH\033[1m:\033[0mMM\033[1m:\033[0mSS"
+  echo -e "  \033[1m-w, --add-website\033[0m\n      add a website to be blocked for some time (see DURATION below)"
+  echo -e "  \033[1m-a, --add-process\033[0m\n      add a process to be blocked for some time (see DURATION below)"
+  echo -e "  \033[1m-F, --add-file\033[0m\n      add a file or directory to be uneditable for some time (see DURATION below)"
+  echo -e "  \033[1m-c, --check-current-focus\033[0m\n      print remaining time for active focus sessions. FLAG must be 'a', 'F', 'w', or their full names"
+  echo -e "  \033[1m-t, --show-tabs\033[0m\n      display open tabs with an interactive menu to temporarily block sites"
   echo -e "  \033[1m-S, --sites\033[0m\n      add sites to be blocked"
   echo -e "  \033[1m-b, --blocklist\033[0m\n      add a stevenblack blocklist to add to hosts"
   echo -e "  \033[1m-h, --help\033[0m\n      show this message and exit"
+  echo -e "\n\033[1mDURATION FORMAT\033[0m"
+  echo -e "  DURATION uses natural language to specify how long the focus lasts."
+  echo -e "  Examples:"
+  echo -e "    \033[1m'3 min'\033[0m           ends the focus in 3 minutes"
+  echo -e "    \033[1m'3 days 2 hours'\033[0m  ends the focus in 3 days and 2 hours"
+  echo -e "    \033[1m'3 friday'\033[0m        ends the focus 3 fridays from now"
+  echo -e "    \033[1m'sunday'\033[0m          ends the focus the next sunday"
+  echo -e "    \033[1m'tomorrow 12am'\033[0m   ends the focus at 12:00 AM tomorrow"
 }
 
 time_left() {
@@ -561,6 +572,21 @@ check-focus() {
   local file="$1"
   local hash="52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
   local up_to_date_info genesis period drand_failed=false
+  case "$file" in
+  w | W | -w | -W | add-website)
+    file="/etc/website-focus.txt"
+    ;;
+  a | A | -A | -a | add-process)
+    file="/etc/process-focus.txt"
+    ;;
+  F | f | -f | -F | add-file)
+    file="/etc/file-focus.txt"
+    ;;
+  *)
+    echo "Not valid flag"
+    exit 1
+    ;;
+  esac
 
   if up_to_date_info=$(curl -sf "https://api.drand.sh/${hash}/info"); then
     genesis=$(echo "$up_to_date_info" | awk -F '[":,]' '{print $14}')

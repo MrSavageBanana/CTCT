@@ -110,8 +110,8 @@ focus_attr() {
   focus_file = $2
   round_to_end = $4
   if (round_to_end < current_round) {
-  cmd2 = "sudo chattr -i " focus_file
   cmd = "sudo sed -i '"'"'/" round_to_end "/d'"'"' " file
+  cmd2 = "sudo chattr -i " focus_file
   system(cmd2)
   system(cmd)
  } else {
