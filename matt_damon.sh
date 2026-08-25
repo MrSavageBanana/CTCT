@@ -1,5 +1,9 @@
 #!/bin/bash
 # created with Claude. Account: Burhan Ra'if Kouri
+current_round=$(curl -Ss https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/latest | awk -F '[\":,]' '{print $4}')
+if [[ -z $current_round ]]; then
+  CURL_FAILED=true
+fi
 check_dependencies() {
   # just the dependencies that vivaldimods and matt_damon rely on.
   local deps=("awk" "basename" "bash" "chattr" "curl" "diff" "echo" "file" "grep" "kil" "mapfile" "pgrep" "readarray" "rm" "sed" "strace" "sudo" "systemctl" "tee" "uniq" "xargs")
@@ -43,13 +47,11 @@ closetabs() {
 # assumes that the /etc/focus.txt has this in the following order
 # "website" "round"
 closetabs_focus() {
+  if [[ $CURL_FAILED == "true" ]]; then
+    return
+  fi
   local file="/etc/website-focus.txt"
   local -a domains=() ids=()
-  # check if there is any outdated websites existing
-  current_round=$(curl -Ss https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/latest | awk -F '[\":,]' '{print $4}')
-  # file is append-only now, so we can't sed the dead entries out of it.
-  # Instead build an in-memory copy with only the entries that are still
-  # live (last round wins if a site was appended more than once).
   live_entries=$(awk -v current_round="$current_round" -F '"' '
     { round[$2]=$4 }
     END { for (site in round) if (round[site] >= current_round) print "\""site"\" \""round[site]"\"" }
@@ -66,45 +68,28 @@ closetabs_focus() {
     '
   )
   for i in "${!domains[@]}"; do
-    if grep -qF "${domains[$i]}" <<<"$live_entries"; then
-      curl -s "http://localhost:9222/json/close/${ids[$i]}" >/dev/null
-    fi
-  done
+    local tab_url="${domains[$i]}"
+    local tab_id="${ids[$i]}"
 
-}
-closetabs_focus() {
-  local file="/etc/website-focus.txt"
-  local -a domains=() ids=()
-  # check if there is any outdated websites existing
-  current_round=$(curl -Ss https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/latest | awk -F '[\":,]' '{print $4}')
-  # file is append-only now, so we can't sed the dead entries out of it.
-  # Instead build an in-memory copy with only the entries that are still
-  # live (last round wins if a site was appended more than once).
-  live_entries=$(awk -v current_round="$current_round" -F '"' '
-    { round[$2]=$4 }
-    END { for (site in round) if (round[site] >= current_round) print "\""site"\" \""round[site]"\"" }
-  ' "$file")
+    while read -r blocked_site _; do # the underscore is to throw away the round number
+      blocked_site="${blocked_site%\"}"
+      blocked_site="${blocked_site#\"}"
 
-  # get the existing domains
-  while IFS=$'\t' read -r domain id; do
-    domains+=("$domain")
-    ids+=("$id")
-  done < <(
-    curl -s http://localhost:9222/json/list | awk -F '"' '
-    /"id":/ { id = $4 }
-    /"url": "https?:\/\// { sub(/^https?:\/\//, "", $4); print $4 "\t" id }
-    '
-  )
-  for i in "${!domains[@]}"; do
-    if grep -qF "${domains[$i]}" <<<"$live_entries"; then
-      curl -s "http://localhost:9222/json/close/${ids[$i]}" >/dev/null
-    fi
+      # shellcheck disable=SC2053
+      # Used for disabling the glob error for here. We WANT it to glob
+      if [[ "$tab_url" == $blocked_site ]]; then
+        curl -s "http://localhost:9222/json/close/$tab_id" >/dev/null
+        break
+      fi
+    done <<<"$live_entries"
   done
 
 }
 focus() {
+  if [[ $CURL_FAILED == "true" ]]; then
+    return
+  fi
   local file="/etc/process-focus.txt"
-  current_round=$(curl -Ss https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/latest | awk -F '[\":,]' '{print $4}')
   # file is append-only now, so we can't sed the dead entries out of it.
   # Instead build an in-memory list of process names that are still live
   # (last round wins if a name was appended more than once).
@@ -133,8 +118,10 @@ focus() {
   done
 }
 focus_attr() {
+  if [[ $CURL_FAILED == "true" ]]; then
+    return
+  fi
   local file="/etc/file-focus.txt"
-  current_round=$(curl -Ss https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/latest | awk -F '[\":,]' '{print $4}')
   awk -v current_round="$current_round" -v file="$file" -F '\"' '{
   focus_file = $2
   round_to_end = $4

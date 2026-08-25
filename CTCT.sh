@@ -48,6 +48,17 @@ immuting() {
     fi
   done
 }
+check_file() {
+  file="$1"
+  if [[ ! -e "$file" ]]; then
+    echo_red "$file has doesn't exist"
+    perform_rollback
+  fi
+  if ! lsattr "$file" | awk 'index($1, "i") { found=1; exit } END { exit !found }'; then # echos 1 if it has immutability. 0 if it doesn't
+    echo_red "$file has immutability flag"
+    perform_rollback
+  fi
+}
 SCRIPT_NAME=${BASH_SOURCE[0]##*/}
 SCRIPT_DIR=$(
   if cd -- "${BASH_SOURCE[0]%/*}" 2>/dev/null; then
@@ -60,10 +71,10 @@ FILE_PATH="$SCRIPT_DIR/$SCRIPT_NAME"
 # flag idea: a quiet flag which will remove any output that may show up.
 # The users can specify what they want gone and
 # it will write to a variable that will be checked before the variable is used
-SHORT="vfP:pS:b:Dshd:w:a:F:tc:"
-LONG="validate,fix,privileges:,print-privileges,sites:,blocklist:,decrypt,show-password,help,date:,add-website:,add-process:,add-file:,check-current-focus:,show-tabs"
+SHORT="vfP:pS:b:Dshd:w:a:F:tc:H:"
+LONG="validate,fix,privileges:,print-privileges,sites:,blocklist:,decrypt,show-password,help,date:,add-website:,add-process:,add-file:,check-current-focus:,show-tabs,add-website-block"
 if ! PARSED=$(getopt --options "$SHORT" --longoptions "$LONG" --name "$0" -- "$@"); then
-  echo "Try '$FILE_PATH --help' for more information"
+  echo "Try '$SCRIPT_NAME --help' for more information"
   exit 2
 fi
 eval set -- "$PARSED"
@@ -96,13 +107,73 @@ important_files=('/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pacman.d/hooks/g
 important_files2=('/etc/sudoers' '/etc/sudoers.d' '/etc/sudoers.d/90-allowed-commands')
 important_files_to_create=('/etc/file-focus.txt' '/etc/process-focus.txt' '/etc/website-focus.txt')
 important_files_to_append=('/etc/browsers.txt' '/etc/hosts' '/etc/file-focus.txt' '/etc/process-focus.txt' '/etc/website-focus.txt')
-potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/systemd/system/CTCT.target.wants/closetabs.service" "/etc/matt_damon.sh" "/etc/browsers.txt" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "/etc/sudoers.d/90-allowed-commands" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/.local/share/Trash/files/vivaldimods_output.txt" "$HOME/.local/share/Trash/files/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}" "$HOME/.local/share/Trash/files/tle")
+mapfile -t scripts < <(curl -s "https://api.github.com/repos/MrSavageBanana/CTCT/contents/Custom_Vivaldi_JS(AI)" | awk -F'\"' '/"name":/ {print $4}') # current scripts in the folder
+potentially_overwritten_files=(
+  "/etc/systemd/system/closetabs.service"
+  "/etc/systemd/system/CTCT.target.wants/closetabs.service"
+  "/etc/matt_damon.sh"
+  "/etc/browsers.txt"
+  "/etc/pacman.d/hooks.bin/vivaldimods.sh"
+  "/etc/pacman.d/hooks/vivaldiupdate.hook"
+  "/etc/pacman.d/hooks/grub1.hook"
+  "/etc/pacman.d/hooks/grub2.hook"
+  "$HOME/CTCT/vivaldimods_output.txt"
+  "$HOME/.local/share/applications/vivaldi-stable.desktop"
+  "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock"
+  "/etc/sudoers.d/90-allowed-commands"
+  "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.lock"
+  "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt"
+  "$HOME/.local/share/Trash/files/vivaldimods_output.txt"
+  "$HOME/.local/share/Trash/files/vivaldi-stable.desktop"
+  "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}"
+  "$HOME/.local/share/Trash/files/tle"
+  "/etc/file-focus.txt"
+  "/etc/process-focus.txt"
+  "/etc/website-focus.txt"
+  "${scripts[@]}")
+potentially_overwritten_directories=("$HOME/CTCT/" "/etc/systemd/system/CTCT.target.wants" "$HOME/.local/share/Trash/files/hooks.bin" "$HOME/.local/share/Trash/files/hooks" "$HOME/.local/share/Trash/files/etc" "$HOME/.local/share/Trash/files/pacman.d" "$HOME/.local/share/Trash/files/sudoers.d" "$HOME/.local/share/Trash/files/go" "$HOME/.local/share/Trash/files/CTCT")
 user=$(whoami)
 export LC_ALL=C
 trap 'perform_rollback' ERR
 trap "" SIGINT SIGTSTP SIGQUIT # can't risk the user exiting the script and messing with things mid through
 # TODO: Attempt to fix the missing dependencies. DEPENDS ON: Auto Detect the system's package manager and use it instead of just pacman. At least Debian and Fedora
 deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" "awk" "dialog" "git" "grep" "curl" "chpasswd" "chattr" "systemctl" "grep" "tar" "diff" "find" "md5sum" "sort" "bash" "tr" "fold" "head" "shred" "whoami" "basename" "pgrep" "kill" "xargs" "uniq" "file" "strace" "vivaldi" "pacman")
+compare_states() {
+  diff "$1" "$2" | awk '
+    /^[<>] / {
+        action = $1
+        # Extract filename starting at character 37 to perfectly preserve spaces
+        file = substr($0, 37) 
+        
+        if (action == "<") {
+            state[file] = "Deleted"
+        } else if (action == ">") {
+            if (file in state && state[file] == "Deleted") {
+                state[file] = "Modified"
+            } else {
+                state[file] = "Created"
+            }
+        }
+    }
+    END {
+        # Define true-color ANSI variables to match your preferred palette
+        red    = "\033[38;2;255;0;0m"
+        green  = "\033[38;2;0;255;0m"
+        yellow = "\033[38;2;255;255;0m"
+        reset  = "\033[0m"
+        
+        # Loop through our recorded files and print them with colors
+        for (f in state) {
+            if (state[f] == "Deleted") {
+                print red "[-] Deleted:  " reset f
+            } else if (state[f] == "Created") {
+                print green "[+] Created:  " reset f
+            } else if (state[f] == "Modified") {
+                print yellow "[~] Modified: " reset f
+            }
+        }
+    }' | sort -k3
+}
 check_dependencies() {
   for dep in "${deps[@]}"; do
     if ! command -v "$dep" >/dev/null 2>&1; then
@@ -119,32 +190,18 @@ check_dependencies() {
   fi
 }
 check_overwritten() {
-  # we are unable to warn the users about the JS files that may be overwritten unless we ping the github repo (which we will already do when we clone) to check what files might be overwritten
   for file in "${potentially_overwritten_files[@]}"; do
     if [[ -e "$file" ]]; then
       overwritten_files+=("$file")
     fi
   done
-  if [[ "${#overwritten_files[@]}" -eq 0 ]]; then
-    if command -v vivaldi >/dev/null; then # checks if vivaldi is installed. if it is, there may be some js files. if not, there is no reason to suspect
-      echo "No files will be overwritten"
-      echo_red "Also check for JS files at /opt/vivaldi/resources/vivaldi/"
-      if [[ ! $VALIDATEOPT -eq 1 ]]; then
-        echo "Use this time to check for JS files at /opt/vivaldi/resources/vivaldi/. Press enter when checked"
-        countdown 90
-      fi
-    fi
-  elif [[ "${#overwritten_files[@]}" -ne 0 ]]; then
+  if [[ "${#overwritten_files[@]}" -ne 0 ]]; then
     idk_a_good_name "overwritten_files" "overwritten files"
-    if command -v vivaldi >/dev/null; then # checks if vivaldi is installed. if it is, there may be some js files. if not, there is no reason to suspect
-      echo_red "Also check for JS files"
-    fi
     if [[ ! $VALIDATEOPT -eq 1 ]]; then
       exit
     fi
   fi
 
-  potentially_overwritten_directories=("$HOME/CTCT/" "/etc/systemd/system/CTCT.target.wants" "$HOME/.local/share/Trash/files/hooks.bin" "$HOME/.local/share/Trash/files/hooks" "$HOME/.local/share/Trash/files/etc" "$HOME/.local/share/Trash/files/pacman.d" "$HOME/.local/share/Trash/files/sudoers.d" "$HOME/.local/share/Trash/files/go" "$HOME/.local/share/Trash/files/CTCT")
   for dir in "${potentially_overwritten_directories[@]}"; do
     if [[ -e "$dir" ]]; then
       overwritten_dirs+=("$dir")
@@ -233,8 +290,7 @@ perform_rollback() {
     done
     echo -e "oldstate.txt${spacer}newstate.txt\n"
 
-    # This should bypass all terminal theming.
-    diff --side-by-side --width="$COLUMNS" --color=always --palette='de=38;2;255;0;0:ad=38;2;0;255;0:hd=1;38;2;255;255;255:ln=38;2;128;128;128' --suppress-common-lines "$HOME/oldstate.txt" "$HOME/newstate.txt"
+    compare_states "$HOME/oldstate.txt" "$HOME/newstate.txt"
     echo "Leftover Check Finished. Examine for any modified files"
   fi
   echo -e "\033[38;2;124;252;0m Rollback complete \033[0m"
@@ -246,6 +302,8 @@ fix_overwritten() {
     "${important_files[@]}"
     "${important_files2[@]}"
     "${important_files_to_append[@]}"
+    "${potentially_overwritten_files[@]}"
+    "${potentially_overwritten_directories[@]}"
   )
   for f in "${all_potentially_problomatic_files[@]}"; do
     if [[ -e "$f" ]]; then
@@ -256,6 +314,17 @@ fix_overwritten() {
     mkdir -p "$HOME/.local/share/Trash/files/"
   fi
   for f2 in "${potentially_overwritten_files[@]}"; do
+    if [[ -e "$f2" ]]; then
+      if [[ "$f2" == "$HOME/.local/share/Trash/files/"* ]]; then # if the file is in trash
+        while [[ ! -e "$f2" ]]; do                               # while the file that we want to rename it to doesn't exist,
+          ((add++))
+          f2="${f2}_$add"
+        done
+      fi
+      sudo mv -f "$f2" "$HOME/.local/share/Trash/files/"
+    fi
+  done
+  for f2 in "${potentially_overwritten_directories[@]}"; do
     if [[ -e "$f2" ]]; then
       sudo mv -f "$f2" "$HOME/.local/share/Trash/files/"
     fi
@@ -283,7 +352,6 @@ fix_dependencies() {
   echo -ne '\n'
   echo_red "IF CLEANING ALL LEFTOVER EFFECTS FROM CTCT, THE FOLLOWING APPLY:"
   echo_red "remove entries from /etc/hosts yourself" # since fix_dependencies is always run with fix_overwritten, just put the fix_overwritten messages here
-  echo_red "remove leftover JS from /opt/vivaldi/resources/vivaldi/ yourself"
 }
 anchor() {
   set -o nounset
@@ -431,6 +499,7 @@ time_left() {
     fi
   fi
 }
+
 decrypt() {
   local round
   local epoch
@@ -442,7 +511,18 @@ decrypt() {
     exit
   else
     if [[ -e "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" ]]; then
-      echo_red "Remove GRUB_PASSWORD-KEEP_SAFE_unlocked.txt then try again"
+      time_in_file=$(awk 'NR==3 {$1=$2=$3=""; print $0}' "/home/shayan/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt.35" | xargs -I {} date -d "{}" "+%s")
+      today=$(date -d today +%s)
+      how_old_is_file=$((today - time_in_file))
+      # 3 options, Equal, positive or negative.
+      # if negative, the file is for a future date. Maybe a file created by a time that was cracked early and was suppossed to still be going. Ignore
+      # if positive or equal , in the past so it should be trashed.
+      if [[ "$how_old_is_file" -ge 0 ]]; then
+        mv "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" "$HOME/.local/share/Trash/files/"
+        echo_red "MOVED \"$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt\" to $HOME/.local/share/Trash/files \nReason: it was detected to be from a past session. Date: $time_in_file"
+      else
+        echo_red "Remove GRUB_PASSWORD-KEEP_SAFE_unlocked.txt then try again"
+      fi
       exit
     fi
     up_to_date_info=$(curl -sf https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/info)
@@ -459,6 +539,9 @@ decrypt() {
     # this should print it's own stdout which will say if it isn't time yet.
     decrypt_output=$("$HOME/go/bin/tle" --decrypt -o "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" 2>&1)
     if [[ ! -z "$decrypt_output" ]]; then
+      if [[ ! -s "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" ]]; then
+        mv "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" "$HOME/.local/share/Trash/files/"
+      fi
       round=$(echo "$decrypt_output" | awk -F " " '{print $7}')
       epoch=$((((round - 1) * period) + genesis))
       selected_end=$(date -d "@$epoch" "+%X %x")
@@ -471,6 +554,7 @@ decrypt() {
         else
           echo "Ends at $selected_end"
         fi
+
       fi
     fi
 
@@ -480,12 +564,13 @@ decrypt() {
       echo -e "\033[38;2;124;252;0m Current ROOT Password=$old_password \033[0m"
       if [ "$SHOW_PASSWORD" == true ]; then
         set +x
-        read -pr 'Enter new password for Root: ' new_password
+        read -r -p 'Enter new password for Root: ' new_password
       else
-        read -spr 'Enter new password for Root: ' new_password
+        read -sr -p 'Enter new password for Root: ' new_password
+        echo
         set +x
       fi
-      echo "root:$new_password" | su --command chpasswd
+      su -c "echo \"root:$new_password\" | chpasswd"
       if [[ "$restore_state" == "set -o xtrace" ]]; then
         set -x
       fi
@@ -506,7 +591,19 @@ add_X() {
   if ! up_to_date_info=$(curl -sf https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/info); then
     drand_failed=true
   fi
-  ending_epoch=$(date -d "$time" +%s)
+  if [[ "$time" == "END" ]]; then
+    # I don't know of any better way to get the time the thing ends.
+    decrypt_output=$("$HOME/go/bin/tle" --decrypt -o "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" 2>&1)
+    if [[ ! -z "$decrypt_output" ]]; then
+      round=$(echo "$decrypt_output" | awk -F " " '{print $7}')
+      epoch=$((((round - 1) * period) + genesis))
+      selected_end=$(date -d "@$epoch" "+%X %x")
+      current_epoch=$(date +%s)
+      ending_epoch=$((epoch - current_epoch))
+    fi
+  else
+    ending_epoch=$(date -d "$time" +%s)
+  fi
   if [[ $drand_failed == "true" ]]; then
     # these are the likely defaults.
     genesis="1692803367"
@@ -527,6 +624,8 @@ add_X() {
     echo "\"$options_option\"" "\"$round\"" | sudo tee -a "/etc/process-focus.txt"
   elif [ "$option" == "file" ]; then
     echo "\"$options_option\"" "\"$round\"" | sudo tee -a "/etc/file-focus.txt"
+  elif [ "$option" == "hosts" ]; then
+    echo "$options_option $time" | sudo tee -a "/etc/hosts" # "time" is a bad variable name. Should be something better but it represents the second argument going into the hosts. AKA the domain
   else
     exit 1
   fi
@@ -548,12 +647,13 @@ add_X() {
 }
 multi_flag_error_check() {
   local flag="$1"
-  local arg1_label="$2"
+  local option="$2"
   local arg1="$3"
   local arg2="$4"
-  echo "$arg2" | awk -F: -v option="$option" -v flag="$flag" '{
+  local second_argument="$5"
+  echo "$arg2" | awk -F: -v option="$option" -v flag="$flag" second_argument="$second_argument" '{
     if (NF >= 3) {
-        print "ERROR: Colons are meant to seperate the" option "from the duration."
+        print "ERROR: Colons are meant to seperate the" option "from the" second_argument
         print "You likely have a colon in your argument for" flag
         exit 1
     } else {
@@ -565,7 +665,7 @@ multi_flag_error_check() {
     exit
   else
     if [ -z "$arg1" ] || [ -z "$arg2" ]; then
-      echo_red "Error: $flag requires two arguments ($arg1_label and DURATION)."
+      echo_red "Error: $flag requires two arguments ($option and $second_argument)."
       exit 1
     fi
   fi
@@ -614,13 +714,19 @@ check-focus() {
     epoch=$((((round_to_end - 1) * period) + genesis))
     selected_end=$(date -d "@$epoch" "+%X %x")
     time_diff=$((epoch - current_epoch))
-
+    formatted_line=$(echo "$line" | awk -F "\"" '{print $2 ":"}')
     time_left "$time_diff"
-
-    if [[ -n "$selected_end" ]]; then
-      echo "Ends at $selected_end ($result remaining)"
+    if [[ ! "$result" == "0 seconds" ]]; then # hides the finished
+      if [[ -n "$selected_end" ]]; then
+        echo "$formatted_line"
+        echo "Ends at $selected_end ($result remaining)"
+        ((echo_occur++))
+      fi
     fi
   done <"$file"
+  if [[ echo_occur -eq 0 ]]; then
+    echo -ne "Nothing is running.\nTo see finished sessions, see $file"
+  fi
 }
 display_sites_with_N() {
   select url in $(curl -s http://localhost:9222/json/list | awk -F '"' '/"url": "https?:\/\// { sub(/^https?:\/\//, "", $4); print $4 }'); do
@@ -654,7 +760,13 @@ check-sites() {
     No | no | n) exit ;;
     esac
   done
-
+}
+check_vivaldi_is_not_open() {
+  cmdline=$(pgrep -fa "/opt/vivaldi/vivaldi-bin" | grep -v "type" | awk '{$1=""; print $0}' | grep --only-matching -- "--remote-debugging-port=9222")
+  if [[ "$cmdline" != "--remote-debugging-port=9222" ]]; then
+    echo "close vivaldi or it will be closed when the script runs. You have 5 min."
+    countdown 300
+  fi
 }
 # Checks Ends
 # Rollback Functions Start
@@ -703,7 +815,7 @@ undo_create_etc_dir() { sudo mv -f /etc "$HOME/.local/share/Trash/files/"; } # t
 undo_create_pacman_d_dir() { sudo mv -f /etc/pacman.d "$HOME/.local/share/Trash/files/"; }
 # don't add all of these binaries on one line. add no text on the same line as the "binaries_to_allow=(" line. This will break the '-P, --privileges' option. Don't delete this comment.
 binaries_to_allow=(
-  "curl *" "jq *" "adb *" "bat *" "blkid *" "cat *" "chmod *" "docker-compose *" "du *" "flatpak *" "fuser *" "grep *" "journalctl *" "killall *" "ln *" "mv *" "nbfc *" "pkill *" "rm *" "rmpc *" "sensors-detect *" "sleep *" "ss *" "tailscale *" "tlp *" "tlp-stat *" "touch *" "ufw *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "tee *" "visudo --check" "sed -i '/@includedir/{/@includedir /etc/sudoers.d/!d;}' /etc/sudoers" "chattr +i /etc/sudoers" "chattr +i /etc/sudoers.d" "chattr +i /etc/sudoers.d/90-allowed-commands")
+  "loadkeys *" "systemctl *" "ls *" "lsattr *" "curl *" "jq *" "adb *" "bat *" "blkid *" "cat *" "chmod *" "docker-compose *" "du *" "flatpak *" "fuser *" "grep *" "journalctl *" "killall *" "ln *" "mv *" "nbfc *" "pkill *" "rm *" "rmpc *" "sensors-detect *" "sleep *" "ss *" "tailscale *" "tlp *" "tlp-stat *" "touch *" "ufw *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "tee *" "visudo --check" "sed -i '/@includedir/{/@includedir /etc/sudoers.d/!d;}' /etc/sudoers" "chattr +i /etc/sudoers" "chattr +i /etc/sudoers.d" "chattr +i /etc/sudoers.d/90-allowed-commands")
 undo_create_root() { echo_red "It is not safe for this script to undo the root password creation automatically. Check file for the root password to manually change."; }
 undo_create_local_bin_dir() { echo_red "This folder needs to be here. Not going to undo it"; }
 undo_create_share_applications_dir() { mv -f "$HOME/.local/share/applications/" "$HOME/.local/share/Trash/files"; }
@@ -825,6 +937,7 @@ main() {
   # else
   #	perform_rollback
   # fi
+  check_vivaldi_is_not_open
 
   echo_red "Checking that user can run sudo"
   sudo -vk || exit_cleanly # to ensure that the user has sudo privileges and can run sudo?. Probably will make this more better by ensuring the user can run sudo on all commands neccessary for this script to run
@@ -1058,13 +1171,15 @@ main() {
     if [ "$formatted_date" != "$ending" ] || [ "$epoch_formatted_date" -lt "$today" ]; then
       DATE_MANUAL=false
       echo "DATE FLAG HAS BEEN REJECTED"
+      echo "You will be prompted to pick a date and time again."
+      echo "DEBUG INFO:"
       echo "formatted_date:"
       echo "$formatted_date"
-      echo "epoch_formatted_date"
+      echo "epoch_formatted_date:"
       echo "$epoch_formatted_date"
-      echo "today"
+      echo "today:"
       echo "$today"
-      countdown 15
+      countdown 15 # to help them read the above output.
     fi
   }
   if [[ ! -z "$ending" ]]; then # if it is not empty at this point, flag was used
@@ -1261,27 +1376,37 @@ while true; do
     shift 2
     ;;
   -w | --add-website)
-    IFS=':' read -r ADDWEBSITE_ARG ADDWEBSITE_ARG2 <<<"$2"
+    IFS=':' read -r ADDWEBSITE_ARG ADDWEBSITE_DURATION <<<"$2"
     ADDWEBSITEOPT=1
-    multi_flag_error_check "--add-website" "WEBSITE" "$ADDWEBSITE_ARG" "$ADDWEBSITE_ARG2"
+    multi_flag_error_check "--add-website" "WEBSITE" "$ADDWEBSITE_ARG" "$ADDWEBSITE_DURATION" "duration"
     shift 2
     ;;
   -a | --add-process)
-    IFS=':' read -r ADDPROCESS_ARG ADDPROCESS_ARG2 <<<"$2"
+    IFS=':' read -r ADDPROCESS_ARG ADDPROCESS_DURATION <<<"$2"
     ADDPROCCESSOPT=1
-    multi_flag_error_check "--add-process" "PROCESS" "$ADDPROCESS_ARG" "$ADDPROCESS_ARG2"
+    multi_flag_error_check "--add-process" "PROCESS" "$ADDPROCESS_ARG" "$ADDPROCESS_DURATION" "duration"
     shift 2
     ;;
   -F | --add-file)
-    IFS=':' read -r ADDFILE_ARG ADDFILE_ARG2 <<<"$2"
+    IFS=':' read -r ADDFILE_ARG ADDFILE_DURATION <<<"$2"
     ADDFILEOPT=1
-    multi_flag_error_check "--add-file" "FILE" "$ADDFILE_ARG" "$ADDFILE_ARG2"
+    multi_flag_error_check "--add-file" "FILE" "$ADDFILE_ARG" "$ADDFILE_DURATION" "duration"
     shift 2
     ;;
   -c | --check-current-focus)
     CHECKCURRENTFOCUSOPT=1
     FLAG="$2"
     shift 2
+    ;;
+  -H | --add-website-block)
+    IFS=':' read -r ADDBLOCK_IP_ADDR ADDBLOCK_ENTRY <<<"$2"
+    ADDBLOCK=1
+    multi_flag_error_check "--add-website-block" "IP_ADDR" "$ADDBLOCK_IP_ADDR" "$ADDBLOCK_ENTRY" "HOST_ENTRY"
+    shift 2
+    ;;
+  -C | --check-all-focus)
+    CHECKALLFOCUSOPT=1
+    shift
     ;;
   -t | --show-tabs)
     SHOWTABSOPT=1
@@ -1310,13 +1435,13 @@ while true; do
   esac
 done
 # Claude's idea on how to ensure the flags are standalone without writing the same code for each standalone flag
-mutually_exclusive_flags=("$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT" "$SITESOPT" "$BLOCKLISTOPT" "$DECRYPTOPT" "$SHOWPASSWORDOPT" "$ADDWEBSITEOPT" "$ADDPROCCESSOPT" "$ADDFILEOPT" "$DATEOPT" "$TIMEOPT" "$CHECKCURRENTFOCUSOPT" "$SHOWTABSOPT")
+mutually_exclusive_flags=("$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT" "$SITESOPT" "$BLOCKLISTOPT" "$DECRYPTOPT" "$SHOWPASSWORDOPT" "$ADDWEBSITEOPT" "$ADDPROCCESSOPT" "$ADDFILEOPT" "$DATEOPT" "$TIMEOPT" "$CHECKCURRENTFOCUSOPT" "$SHOWTABSOPT" "$ADDBLOCK" "$CHECKALLFOCUSOPT")
 
 total_set=0
 for opt in "${mutually_exclusive_flags[@]}"; do
   ((opt == 1)) && ((++total_set))
 done
-standalone_values=("$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT")
+standalone_values=("$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT" "$SHOWTABSOPT" "$CHECKALLFOCUSOPT")
 standalone_names=("--validate" "--fix" "--privileges" "--print-privileges")
 for i in "${!standalone_values[@]}"; do
   if [[ "${standalone_values[$i]}" -eq 1 && $total_set -gt 1 ]]; then
@@ -1359,30 +1484,49 @@ if [[ $DECRYPTOPT -eq 1 ]]; then
 fi
 if [[ "$ADDWEBSITEOPT" -eq 1 ]]; then
   if [[ -e /etc/systemd/system/CTCT.target.wants/closetabs.service ]]; then
-    add_X 'website' "$ADDWEBSITE_ARG" "$ADDWEBSITE_ARG2"
+    add_X 'website' "$ADDWEBSITE_ARG" "$ADDWEBSITE_DURATION"
   fi
   exit
 fi
 if [[ "$ADDPROCCESSOPT" -eq 1 ]]; then
   if [[ -e /etc/systemd/system/CTCT.target.wants/closetabs.service ]]; then
-    add_X 'process' "$ADDPROCESS_ARG" "$ADDPROCESS_ARG2"
+    add_X 'process' "$ADDPROCESS_ARG" "$ADDPROCESS_DURATION"
   fi
   exit
 fi
 if [[ "$ADDFILEOPT" -eq 1 ]]; then
   if [[ -e /etc/systemd/system/CTCT.target.wants/closetabs.service ]]; then
-    add_X 'file' "$ADDFILE_ARG" "$ADDFILE_ARG2"
+    add_X 'file' "$ADDFILE_ARG" "$ADDFILE_DURATION"
   fi
+  exit
+fi
+if [[ $ADDBLOCK -eq 1 ]]; then
+  add_X 'hosts' "$ADDBLOCK_IP_ADDR" "$ADDBLOCK_ENTRY"
   exit
 fi
 if [[ $CHECKCURRENTFOCUSOPT -eq 1 ]]; then
   check-focus "$FLAG"
   exit
 fi
+if [[ $CHECKALLFOCUSOPT -eq 1 ]]; then
+  echo "Checking website sessions..."
+  check-focus "w"
+  echo
+  echo "Checking progress sessions..."
+  check-focus "a"
+  echo
+  echo "Checking File sessions..."
+  check-focus "F"
+  exit
+fi
 
 if [[ $SHOWTABSOPT -eq 1 ]]; then
   display_sites_with_N
   exit
+fi
+
+if [[ $DATEOPT -eq 1 ]]; then
+  verify_date_syntax
 fi
 main
 exit
