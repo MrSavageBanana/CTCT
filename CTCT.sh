@@ -561,7 +561,6 @@ decrypt() {
     if [[ -s "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" ]]; then
       local old_password
       old_password=$(awk 'NR==2 {print; exit}' "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" 2>/dev/null)
-      echo -e "\033[38;2;124;252;0m Current ROOT Password=$old_password \033[0m"
       if [ "$SHOW_PASSWORD" == true ]; then
         set +x
         read -r -p 'Enter new password for Root: ' new_password
@@ -570,7 +569,8 @@ decrypt() {
         echo
         set +x
       fi
-      su -c "echo \"root:$new_password\" | chpasswd"
+      echo "$old_password" | su -c "echo 'root:$new_password' | chpasswd"
+      echo
       if [[ "$restore_state" == "set -o xtrace" ]]; then
         set -x
       fi
@@ -762,10 +762,28 @@ check-sites() {
   done
 }
 check_vivaldi_is_not_open() {
-  cmdline=$(pgrep -fa "/opt/vivaldi/vivaldi-bin" | grep -v "type" | awk '{$1=""; print $0}' | grep --only-matching -- "--remote-debugging-port=9222")
-  if [[ "$cmdline" != "--remote-debugging-port=9222" ]]; then
+  cmdline=$(pgrep -fa "/opt/vivaldi/vivaldi-bin" | grep -v "type" | awk '{$1=""; print $0}' | grep --only-matching -- '--remote-debugging-port=9222' || true)
+  if [[ "$cmdline" != "--remote-debugging-port=9222" && ! -z "$cmdline" ]]; then
     echo "close vivaldi or it will be closed when the script runs. You have 5 min."
     countdown 300
+  fi
+}
+verify_date_syntax() {
+  formatted_date=$(date -d "$ending" "+%m/%d/%y %H:%M:%S")
+  epoch_formatted_date=$(date -d "$ending" +%s 2>/dev/null)
+  today=$(date -d today +%s)
+  if [ "$formatted_date" != "$ending" ] || [ "$epoch_formatted_date" -lt "$today" ]; then
+    DATE_MANUAL=false
+    echo "DATE FLAG HAS BEEN REJECTED"
+    echo "You will be prompted to pick a date and time again."
+    echo "DEBUG INFO:"
+    echo "formatted_date:"
+    echo "$formatted_date"
+    echo "epoch_formatted_date:"
+    echo "$epoch_formatted_date"
+    echo "today:"
+    echo "$today"
+    countdown 15 # to help them read the above output.
   fi
 }
 # Checks Ends
@@ -1164,24 +1182,6 @@ main() {
   fi
 
   # end of grub setup
-  verify_date_syntax() {
-    formatted_date=$(date -d "$ending" "+%m/%d/%y %H:%M:%S")
-    epoch_formatted_date=$(date -d "$ending" +%s 2>/dev/null)
-    today=$(date -d today +%s)
-    if [ "$formatted_date" != "$ending" ] || [ "$epoch_formatted_date" -lt "$today" ]; then
-      DATE_MANUAL=false
-      echo "DATE FLAG HAS BEEN REJECTED"
-      echo "You will be prompted to pick a date and time again."
-      echo "DEBUG INFO:"
-      echo "formatted_date:"
-      echo "$formatted_date"
-      echo "epoch_formatted_date:"
-      echo "$epoch_formatted_date"
-      echo "today:"
-      echo "$today"
-      countdown 15 # to help them read the above output.
-    fi
-  }
   if [[ ! -z "$ending" ]]; then # if it is not empty at this point, flag was used
     verify_date_syntax
   fi
