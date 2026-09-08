@@ -400,6 +400,10 @@ edit_privileges() {
     echo "REMOVE SLASHES"
     ((ERROR++))
   fi
+  if grep -qF "$INSERTS" "$FILE_PATH"; then
+    # no message because the anchor function would have already told them that it was a duplciate entry
+    ((ERROR++))
+  fi
   if [[ "$ERROR" -gt 0 ]]; then
     echo "FIX ERRORS THEN RETRY AGAIN"
     exit

@@ -125,7 +125,7 @@ else
   echo
   chattr -a /etc/hosts
   anchor "$missing" '# BLOCKLIST STARTS HERE' "1" "/etc/hosts" "false"
-  anchor "$custom_websites_to_block_which_not_already_there" '# CUSTOM SITES STARTS HERE' "1" "/etc/hosts"
+  anchor "$custom_websites_to_block_which_not_already_there" '# CUSTOM SITES STARTS HERE' "1" "/etc/hosts" "false"
   echo "$missing" | sudo tee -a /etc/hosts >/dev/null
   if [[ "$restore_state" == "set -o xtrace" ]]; then
     set -x
