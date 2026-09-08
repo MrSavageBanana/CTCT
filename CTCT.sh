@@ -5,9 +5,16 @@
 # For disabling the messages when the exit message is there:
 # shellcheck disable=SC2317
 # shellcheck disable=SC2329
-exit                                                     # if this is accidentally ran. I don't want to ruin my computer. Remove this when needed and the shellcheck lines above
-restore_state=$(set +o | grep -F -- '-o xtrace' || true) # this checks if the script was run with bash -x so after it hides the passwords, it shows the output of -x
-echo_red() {                                             # for things that needs the users attention
+exit # if this is accidentally ran. I don't want to ruin my computer. Remove this when needed and the shellcheck lines above
+backup_timestamp=$(date '+%Y-%m-%dT%H-%M-%S')
+readonly backup_timestamp
+restore_state=$(set +o | grep -F -- '-o xtrace' || true) # this checks if the script was run with bash -x so after it hides the passwords or the messy output, it shows the output of -x
+if [[ ! "$restore_state" == "set -o xtrace" ]]; then
+  exec 3>"$HOME/${backup_timestamp}.log"
+  export BASH_XTRACEFD=3
+  set -x
+fi
+echo_red() { # for things that needs the users attention
   builtin echo -e "\033[38;2;255;0;0m >>> $* <<< \033[0m"
 }
 countdown() {
@@ -108,29 +115,10 @@ important_files2=('/etc/sudoers' '/etc/sudoers.d' '/etc/sudoers.d/90-allowed-com
 important_files_to_create=('/etc/file-focus.txt' '/etc/process-focus.txt' '/etc/website-focus.txt')
 important_files_to_append=('/etc/browsers.txt' '/etc/hosts' '/etc/file-focus.txt' '/etc/process-focus.txt' '/etc/website-focus.txt')
 mapfile -t scripts < <(curl -s "https://api.github.com/repos/MrSavageBanana/CTCT/contents/Custom_Vivaldi_JS(AI)" | awk -F'\"' '/"name":/ {print $4}') # current scripts in the folder
-potentially_overwritten_files=(
-  "/etc/systemd/system/closetabs.service"
-  "/etc/systemd/system/CTCT.target.wants/closetabs.service"
-  "/etc/matt_damon.sh"
-  "/etc/browsers.txt"
-  "/etc/pacman.d/hooks.bin/vivaldimods.sh"
-  "/etc/pacman.d/hooks/vivaldiupdate.hook"
-  "/etc/pacman.d/hooks/grub1.hook"
-  "/etc/pacman.d/hooks/grub2.hook"
-  "$HOME/CTCT/vivaldimods_output.txt"
-  "$HOME/.local/share/applications/vivaldi-stable.desktop"
-  "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock"
-  "/etc/sudoers.d/90-allowed-commands"
-  "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.lock"
-  "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt"
-  "$HOME/.local/share/Trash/files/vivaldimods_output.txt"
-  "$HOME/.local/share/Trash/files/vivaldi-stable.desktop"
-  "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}"
-  "$HOME/.local/share/Trash/files/tle"
-  "/etc/file-focus.txt"
-  "/etc/process-focus.txt"
-  "/etc/website-focus.txt"
-  "${scripts[@]}")
+for mod in "${scripts[@]}"; do
+  potentially_overwritten_files+=("/opt/vivaldi/resources/vivaldi/${mod}")
+done
+potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/systemd/system/CTCT.target.wants/closetabs.service" "/etc/matt_damon.sh" "/etc/browsers.txt" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "/etc/sudoers.d/90-allowed-commands" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/.local/share/Trash/files/vivaldimods_output.txt" "$HOME/.local/share/Trash/files/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}" "$HOME/.local/share/Trash/files/tle" "/etc/file-focus.txt" "/etc/process-focus.txt" "/etc/website-focus.txt")
 potentially_overwritten_directories=("$HOME/CTCT/" "/etc/systemd/system/CTCT.target.wants" "$HOME/.local/share/Trash/files/hooks.bin" "$HOME/.local/share/Trash/files/hooks" "$HOME/.local/share/Trash/files/etc" "$HOME/.local/share/Trash/files/pacman.d" "$HOME/.local/share/Trash/files/sudoers.d" "$HOME/.local/share/Trash/files/go" "$HOME/.local/share/Trash/files/CTCT")
 user=$(whoami)
 export LC_ALL=C
@@ -281,15 +269,6 @@ perform_rollback() {
   if [[ -e "$HOME/oldstate.txt" && -e "$HOME/newstate.txt" ]]; then
     echo "Ready. Click enter to view diff"
     countdown 90
-    mid=$((COLUMNS / 2))
-    string_length_of_oldstate=12
-    pad=$((mid - string_length_of_oldstate))
-    spacer=""
-    for ((i = 0; i < pad; i++)); do
-      spacer+=" "
-    done
-    echo -e "oldstate.txt${spacer}newstate.txt\n"
-
     compare_states "$HOME/oldstate.txt" "$HOME/newstate.txt"
     echo "Leftover Check Finished. Examine for any modified files"
   fi
@@ -315,18 +294,32 @@ fix_overwritten() {
   fi
   for f2 in "${potentially_overwritten_files[@]}"; do
     if [[ -e "$f2" ]]; then
-      if [[ "$f2" == "$HOME/.local/share/Trash/files/"* ]]; then # if the file is in trash
-        while [[ ! -e "$f2" ]]; do                               # while the file that we want to rename it to doesn't exist,
+      if [[ "$f2" == "$HOME/.local/share/Trash/files/"* ]]; then
+        new_path="$f2"
+        add=1
+        while [[ -e "$new_path" ]]; do
+          new_path="${f2}_$add"
           ((add++))
-          f2="${f2}_$add"
         done
+        sudo mv -f "$f2" "$new_path"
+      else
+        sudo mv -f "$f2" "$HOME/.local/share/Trash/files/"
       fi
-      sudo mv -f "$f2" "$HOME/.local/share/Trash/files/"
     fi
   done
-  for f2 in "${potentially_overwritten_directories[@]}"; do
-    if [[ -e "$f2" ]]; then
-      sudo mv -f "$f2" "$HOME/.local/share/Trash/files/"
+  if [[ -e "/etc/systemd/system/CTCT.target.wants/closetabs.service" ]]; then
+    sudo unlink "/etc/systemd/system/CTCT.target.wants/closetabs.service"
+  fi
+  for f3 in "${potentially_overwritten_directories[@]}"; do
+    if [[ -e "$f3" ]]; then
+      basename_initial=$(echo "$f3" | awk -F'/' '{print $NF}') # same as basename command
+      basename=$(echo "$f3" | awk -F'/' '{print $NF}')         # same as basename command
+      add=1
+      while [[ -e "$HOME/.local/share/Trash/files/${basename}" ]]; do
+        basename="${basename_initial}_$add"
+        ((add++))
+      done
+      sudo mv -f "$f3" "$HOME/.local/share/Trash/files/${basename}"
     fi
   done
   # Deletes lines with the username and password
@@ -353,7 +346,20 @@ fix_dependencies() {
   echo_red "IF CLEANING ALL LEFTOVER EFFECTS FROM CTCT, THE FOLLOWING APPLY:"
   echo_red "remove entries from /etc/hosts yourself" # since fix_dependencies is always run with fix_overwritten, just put the fix_overwritten messages here
 }
+fix_vivaldi_mods() {
+  for mod in "${scripts[@]}"; do
+    if [[ -e "$mod" ]]; then
+      sudo chattr -i "$mod"
+      sudo mv "$mod" "$HOME/.local/share/Trash/files/"
+    fi
+  done
+}
+fix_hosts_file() {
+  sudo awk '/# BLOCKLIST STARTS HERE/ {f=1} f {buf = buf $0 ORS; if (/# BLOCKLIST ENDS HERE/) out = buf} END {printf "%s", out}' /etc/hosts
+  sudo awk '/# CUSTOM SITES STARTS HERE/ {f=1} f {buf = buf $0 ORS; if (/# CUSTOM SITES ENDS HERE/) out = buf} END {printf "%s", out}' /etc/hosts
+}
 anchor() {
+  # Use: anchor "THING TO INSERT" "ANCHOR" "THE Nth INSTANCE of the THING TO INSERT" "FILE TO INSERT" "SHOW OUTPUT true?"
   set -o nounset
   local inserts="$1"
   local anchor="$2"
@@ -446,16 +452,18 @@ print_help() {
   echo -e "  \033[1m-f, --fix\033[0m\n      download any missing dependencies and move overwritten files to $HOME/.local/share/Trash/files/"
   echo -e "  \033[1m-P, --privileges\033[0m\n      add binary you want to be able to run with sudo and exit"
   echo -e "  \033[1m-p, --print-privileges\033[0m\n      print privileges to screen and exit"
-  echo -e "  \033[1m-D, --decrypt\033[0m\n      decrypt password and prompt to change it"
-  echo -e "  \033[1m-s, --show-password\033[0m\n      to be used with --decrypt. shows new password user types when changing"
+  echo -e "  \033[1m-S, --sites\033[0m\n      add sites to be blocked"
+  echo -e "  \033[1m-b, --blocklist\033[0m\n      add a stevenblack blocklist to add to hosts"
   echo -e "  \033[1m-d, --date\033[0m\n      add a date to end the focus. format: MM\033[1m/\033[0mDD\033[1m/\033[0mYY HH\033[1m:\033[0mMM\033[1m:\033[0mSS"
   echo -e "  \033[1m-w, --add-website\033[0m\n      add a website to be blocked for some time (see DURATION below)"
   echo -e "  \033[1m-a, --add-process\033[0m\n      add a process to be blocked for some time (see DURATION below)"
   echo -e "  \033[1m-F, --add-file\033[0m\n      add a file or directory to be uneditable for some time (see DURATION below)"
-  echo -e "  \033[1m-c, --check-current-focus\033[0m\n      print remaining time for active focus sessions. FLAG must be 'a', 'F', 'w', or their full names"
+  echo -e "  \033[1m-c, --check-current-focus\033[0m\n      print remaining time for active focus sessions. FLAG must be 'a', 'F', 'w', or their full names" # sounds weird
+  echo -e "  \033[1m-C, --check-all-focus033[0m\n      print remaining time for all focus sessions."
+  echo -e "  \033[1m-H, --add-website-block\033[0m\n      add a website to the the hosts file to block entirely"
   echo -e "  \033[1m-t, --show-tabs\033[0m\n      display open tabs with an interactive menu to temporarily block sites"
-  echo -e "  \033[1m-S, --sites\033[0m\n      add sites to be blocked"
-  echo -e "  \033[1m-b, --blocklist\033[0m\n      add a stevenblack blocklist to add to hosts"
+  echo -e "  \033[1m-D, --decrypt\033[0m\n      decrypt password and prompt to change it"
+  echo -e "  \033[1m-s, --show-password\033[0m\n      to be used with --decrypt. shows new password user types when changing"
   echo -e "  \033[1m-h, --help\033[0m\n      show this message and exit"
   echo -e "\n\033[1mDURATION FORMAT\033[0m"
   echo -e "  DURATION uses natural language to specify how long the focus lasts."
@@ -506,35 +514,38 @@ decrypt() {
   local selected_end
   local current_epoch
   local time_diff
+  up_to_date_info=$(curl -sf https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/info)
+  if [[ $drand_failed == "true" ]]; then
+    # these are the likely defaults.
+    genesis="1692803367"
+    period="3"
+    hash="52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
+  elif [[ $drand_failed != "true" ]]; then
+    genesis=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $14}')
+    period=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $10}')
+    hash=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $19}')
+  fi
+
   if [[ ! -e "$HOME/go/bin/tle" ]]; then
     echo "tle was not found at \"$HOME/go/bin/tle\""
     exit
   else
     if [[ -e "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" ]]; then
-      time_in_file=$(awk 'NR==3 {$1=$2=$3=""; print $0}' "/home/shayan/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt.35" | xargs -I {} date -d "{}" "+%s")
+      time_in_file=$(awk 'NR==3 {$1=$2=$3=""; print $0}' "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" | xargs -I {} date -d "{}" "+%s")
+      epoch_time_in_file=$((((round - 1) * period) + genesis))
+      formatted_epoch_time_in_file=$(date -d "@$epoch_time_in_file" "+%X %x")
       today=$(date -d today +%s)
-      how_old_is_file=$((today - time_in_file))
+      how_old_is_file=$((today - epoch_time_in_file))
       # 3 options, Equal, positive or negative.
       # if negative, the file is for a future date. Maybe a file created by a time that was cracked early and was suppossed to still be going. Ignore
       # if positive or equal , in the past so it should be trashed.
       if [[ "$how_old_is_file" -ge 0 ]]; then
         mv "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" "$HOME/.local/share/Trash/files/"
-        echo_red "MOVED \"$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt\" to $HOME/.local/share/Trash/files \nReason: it was detected to be from a past session. Date: $time_in_file"
+        echo_red "MOVED \"$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt\" to $HOME/.local/share/Trash/files \nReason: it was detected to be from a past session. Date: $formatted_epoch_time_in_file"
       else
         echo_red "Remove GRUB_PASSWORD-KEEP_SAFE_unlocked.txt then try again"
+        exit
       fi
-      exit
-    fi
-    up_to_date_info=$(curl -sf https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/info)
-    if [[ $drand_failed == "true" ]]; then
-      # these are the likely defaults.
-      genesis="1692803367"
-      period="3"
-      hash="52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
-    elif [[ $drand_failed != "true" ]]; then
-      genesis=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $14}')
-      period=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $10}')
-      hash=$(echo "$up_to_date_info" | awk -F '[\":,]' '{print $19}')
     fi
     # this should print it's own stdout which will say if it isn't time yet.
     decrypt_output=$("$HOME/go/bin/tle" --decrypt -o "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" 2>&1)
@@ -561,19 +572,37 @@ decrypt() {
     if [[ -s "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" ]]; then
       local old_password
       old_password=$(awk 'NR==2 {print; exit}' "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" 2>/dev/null)
-      if [ "$SHOW_PASSWORD" == true ]; then
-        set +x
-        read -r -p 'Enter new password for Root: ' new_password
-      else
-        read -sr -p 'Enter new password for Root: ' new_password
+      change_password() {
+        if [ "$SHOW_PASSWORD" == true ]; then
+          set +x
+          read -r -p 'Enter new password for Root: ' new_password
+        else
+          read -sr -p 'Enter new password for Root: ' new_password
+          echo
+          set +x
+        fi
+        if [ "$SHOW_PASSWORD" == true ]; then
+          set +x
+          read -r -p 'Enter new password for Root: ' new_password2
+        else
+          read -sr -p 'Enter new password for Root: ' new_password2
+          echo
+          set +x
+          if [[ "$new_password" != "$new_password2" ]]; then
+            echo_red "Password doesn't match. Try again"
+            countdown 3
+            change_password
+          fi
+        fi
+        echo "$old_password" | su -c "echo 'root:$new_password' | chpasswd"
         echo
-        set +x
-      fi
-      echo "$old_password" | su -c "echo 'root:$new_password' | chpasswd"
-      echo
-      if [[ "$restore_state" == "set -o xtrace" ]]; then
-        set -x
-      fi
+        if [[ "$restore_state" == "set -o xtrace" ]]; then
+          set -x
+        fi
+        echo "$new_password2" | sudo chattr -i /etc/sudoers.d/
+        echo "$new_password2" | sudo mv "$HOME/.local/share/Trash/files/00_$user" "/etc/sudoers.d/"
+        sudo mv "/etc/sudoers.d/90-allowed-commands" "$HOME/.local/share/Trash/files/"
+      }
     fi
   fi
 }
@@ -843,11 +872,32 @@ undo_curl_go() { mv "$HOME/CTCT/go" "$HOME/.local/share/Trash/files/"; }
 undo_install_tle() { mv "$HOME/go/bin/tle" "$HOME/.local/share/Trash/files/"; }
 undo_tle_lock() { mv "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Trash/files/"; }
 undo_chmod_90-allowed-commands() { sudo chmod 0644 /etc/sudoers.d/90-allowed-commands; }
+undo_chmod_usr_bin_systemctl() {
+  access_rights=$(stat -c "%a" /usr/bin/systemctl)
+  sudo chmod "$access_rights" /usr/bin/systemctl
+}
+
+undo_chown_usr_bin_systemctl() {
+  owner=$(stat -c "%U:%G" /usr/bin/systemctl)
+  sudo chown "$owner" /usr/bin/systemctl
+}
 undo_chmod_vivaldi_custom() { chmod -x "$HOME/.local/bin/vivaldi-custom"; }
 reverse_trash_non_90-allowed-commands-files() {
   local "$1"=file
   file=$(echo "$1" | awk -F "/" '{print $NF}')
   sudo mv ~/.local/share/Trash/files/"$file" /etc/sudoers.d/
+}
+undo_add_anchor_blocklist_start() {
+  sudo sed -i 's/# BLOCKLIST STARTS HERE/d' "/etc/hosts"
+}
+undo_add_anchor_custom_sites_start() {
+  sudo sed -i 's/# CUSTOM SITES STARTS HERE/d' "/etc/hosts"
+}
+undo_add_anchor_blocklist_end() {
+  sudo sed -i 's/# BLOCKLIST ENDS HERE/d' "/etc/hosts"
+}
+undo_add_anchor_custom_sites_end() {
+  sudo sed -i 's/# CUSTOM SITES ENDS HERE/d' "/etc/hosts"
 }
 # Rollback Functions End
 # References Begin
@@ -903,8 +953,6 @@ exit_cleanly() {
   echo "Above was Exit code of command that failed"
   perform_rollback
 }
-backup_timestamp=$(date '+%Y-%m-%dT%H-%M-%S')
-readonly backup_timestamp
 set +x
 readonly manual_password="wompwomp" # manual_password is for debugging/developing only
 # TODO: to make more random, give a range instead of just 32, it could be another random number? Ensures that it is harder to hashcat(i think it makes it harder)
@@ -1047,6 +1095,37 @@ main() {
   done
   cd "$HOME/CTCT"
 
+  if ! grep -qF "# BLOCKLIST STARTS HERE" "/etc/hosts"; then
+    if echo "# BLOCKLIST STARTS HERE" | sudo tee --append "/etc/hosts"; then
+      reverse_operation+=("undo_add_anchor_blocklist_start")
+    else
+      reverse_operation
+    fi
+  fi
+
+  if ! grep -qF "# BLOCKLIST ENDS HERE" "/etc/hosts"; then
+    if echo "# BLOCKLIST ENDS HERE" | sudo tee --append "/etc/hosts"; then
+      reverse_operation+=("undo_add_anchor_blocklist_end")
+    else
+      reverse_operation
+    fi
+  fi
+
+  if ! grep -qF "# CUSTOM SITES STARTS HERE" "/etc/hosts"; then
+    if echo "# CUSTOM SITES STARTS HERE" | sudo tee --append "/etc/hosts"; then
+      reverse_operation+=("undo_add_anchor_custom_sites_start")
+    else
+      reverse_operation
+    fi
+  fi
+
+  if ! grep -qF "# CUSTOM SITES ENDS HERE" "/etc/hosts"; then
+    if echo "# CUSTOM SITES ENDS HERE" | sudo tee --append "/etc/hosts"; then
+      reverse_operation+=("undo_add_anchor_custom_sites_end")
+    else
+      reverse_operation
+    fi
+  fi
   if apply_vivaldi_mods; then
     reverse_operation+=("undo_vivaldimods_sh")
   else
@@ -1283,6 +1362,18 @@ main() {
   done
 
   if sudo chmod 0440 /etc/sudoers.d/90-allowed-commands; then
+    reverse_operation+=("undo_chmod_90-allowed-commands")
+  else
+    perform_rollback
+  fi
+
+  if sudo chown root:root /usr/bin/systemctl; then # systemctl uses polkit for starting and disabling services, bypassing our sudo privileges
+    reverse_operation+=("undo_chmod_90-allowed-commands")
+  else
+    perform_rollback
+  fi
+
+  if sudo chmod 700 /usr/bin/systemctl; then # systemctl uses polkit for starting and disabling services, bypassing our sudo privileges.
     reverse_operation+=("undo_chmod_90-allowed-commands")
   else
     perform_rollback

@@ -50,10 +50,32 @@ for item in "${INSERT_BEGIN[@]}"; do
     echo "Inserted $item with indentation."
   fi
 done
+anchor() {
+  set -o nounset
+  local inserts="$1"
+  local anchor="$2"
+  local instance="$3"
+  local file="$4"
+  local output="$5"
+  # change the 1 to another number to get that instance of the $inserts in $file
+  awk -v anchor="$anchor" -v insert="\n\t\"$inserts\"" -v n="$instance" '
+    index($0, anchor) > 0 {
+    count++
+    if (count == n) {
+    pos = index($0, anchor)
+    $0 = substr($0, 1, pos + length(anchor) - 1) insert substr($0, pos + length(anchor))
+    }
+    }
+    1' "$file" >tmp.txt && sudo mv tmp.txt "$file"
+  if [ "$output" == "true" ]; then
+    echo "Inserted $inserts. $file has been updated"
+  fi
+  set +o nounset
+}
 
 echo "${#DUPLICATE_MODS[@]}" 'mods are already indented.'
 # Check that /etc/hosts isn't missing anything from the mirror, and add what's missing
-set +x
+set +x # to clean up xtrace output from showing the thousands of urls.
 extra_mirrors=(
 )
 cleanup() {
@@ -79,7 +101,7 @@ custom_websites=(
 )
 for custom_websites_to_block in "${custom_websites[@]}"; do
   if ! grep -qF "$custom_websites_to_block" /etc/hosts; then
-    mirror="$mirror"$'\n'"$custom_websites_to_block" # gemini told me this is how to make each result on a new line
+    custom_websites_to_block_which_not_already_there="$custom_websites_to_block_which_not_already_there"$'\n'"$custom_websites_to_block"
   fi
 done
 for extra_mirror in "${extra_mirrors[@]}"; do
@@ -102,6 +124,8 @@ else
 
   echo
   chattr -a /etc/hosts
+  anchor "$missing" '# BLOCKLIST STARTS HERE' "1" "/etc/hosts" "false"
+  anchor "$custom_websites_to_block_which_not_already_there" '# CUSTOM SITES STARTS HERE' "1" "/etc/hosts"
   echo "$missing" | sudo tee -a /etc/hosts >/dev/null
   if [[ "$restore_state" == "set -o xtrace" ]]; then
     set -x
