@@ -100,6 +100,8 @@ declare -a missing_dependencies=()
 declare -a overwritten_files=()
 declare -a applied_vivaldi_mods=()
 declare -a potentially_overwritten_files=()
+declare -a scripts_orig=()
+declare -a scripts=()
 declare -a binaries_to_allow=()
 declare -a important_files=()
 declare -a affected_dirs=()
@@ -114,8 +116,9 @@ important_files=('/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pacman.d/hooks/g
 important_files2=('/etc/sudoers' '/etc/sudoers.d' '/etc/sudoers.d/90-allowed-commands')
 important_files_to_create=('/etc/file-focus.txt' '/etc/process-focus.txt' '/etc/website-focus.txt')
 important_files_to_append=('/etc/browsers.txt' '/etc/hosts' '/etc/file-focus.txt' '/etc/process-focus.txt' '/etc/website-focus.txt')
-mapfile -t scripts < <(curl -s "https://api.github.com/repos/MrSavageBanana/CTCT/contents/Custom_Vivaldi_JS(AI)" | awk -F'\"' '/"name":/ {print $4}') # current scripts in the folder
-for mod in "${scripts[@]}"; do
+mapfile -t scripts_orig < <(curl -s "https://api.github.com/repos/MrSavageBanana/CTCT/contents/Custom_Vivaldi_JS(AI)" | awk -F'\"' '/"name":/ {print $4}') # current scripts in the folder
+for mod in "${scripts_orig[@]}"; do
+  scripts+=("/opt/vivaldi/resources/vivaldi/${mod}")
   potentially_overwritten_files+=("/opt/vivaldi/resources/vivaldi/${mod}")
 done
 potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/systemd/system/CTCT.target.wants/closetabs.service" "/etc/matt_damon.sh" "/etc/browsers.txt" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "/etc/sudoers.d/90-allowed-commands" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/.local/share/Trash/files/vivaldimods_output.txt" "$HOME/.local/share/Trash/files/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}" "$HOME/.local/share/Trash/files/tle" "/etc/file-focus.txt" "/etc/process-focus.txt" "/etc/website-focus.txt")
@@ -239,7 +242,8 @@ perform_rollback() {
   # Get the total number of items in the stack
   total_items=${#reverse_operation[@]}
   if [[ $total_items -eq 0 ]]; then
-    exit # no reason to tell the user if there is nothing to reverse.
+    echo -e "\033[38;2;124;252;0m NOTHING TO ROLLBACK \033[0m"
+    exit
   fi
   last_item=${reverse_operation[-1]} &>/dev/null # just for me to see in the bash -x output
 
@@ -355,8 +359,8 @@ fix_vivaldi_mods() {
   done
 }
 fix_hosts_file() {
-  sudo awk '/# BLOCKLIST STARTS HERE/ {f=1} f {buf = buf $0 ORS; if (/# BLOCKLIST ENDS HERE/) out = buf} END {printf "%s", out}' /etc/hosts
-  sudo awk '/# CUSTOM SITES STARTS HERE/ {f=1} f {buf = buf $0 ORS; if (/# CUSTOM SITES ENDS HERE/) out = buf} END {printf "%s", out}' /etc/hosts
+  sudo sed -i '/# BLOCKLIST STARTS HERE/,/# BLOCKLIST ENDS HERE/d' /etc/hosts
+  sudo sed -i '/# CUSTOM SITES STARTS HERE/,/# CUSTOM SITES ENDS HERE/d' /etc/hosts
 }
 anchor() {
   # Use: anchor "THING TO INSERT" "ANCHOR" "THE Nth INSTANCE of the THING TO INSERT" "FILE TO INSERT" "SHOW OUTPUT true?"
@@ -463,7 +467,7 @@ print_help() {
   echo -e "  \033[1m-a, --add-process\033[0m\n      add a process to be blocked for some time (see DURATION below)"
   echo -e "  \033[1m-F, --add-file\033[0m\n      add a file or directory to be uneditable for some time (see DURATION below)"
   echo -e "  \033[1m-c, --check-current-focus\033[0m\n      print remaining time for active focus sessions. FLAG must be 'a', 'F', 'w', or their full names" # sounds weird
-  echo -e "  \033[1m-C, --check-all-focus033[0m\n      print remaining time for all focus sessions."
+  echo -e "  \033[1m-C, --check-all-focus\033[0m\n      print remaining time for all focus sessions."
   echo -e "  \033[1m-H, --add-website-block\033[0m\n      add a website to the the hosts file to block entirely"
   echo -e "  \033[1m-t, --show-tabs\033[0m\n      display open tabs with an interactive menu to temporarily block sites"
   echo -e "  \033[1m-D, --decrypt\033[0m\n      decrypt password and prompt to change it"
@@ -587,9 +591,9 @@ decrypt() {
         fi
         if [ "$SHOW_PASSWORD" == true ]; then
           set +x
-          read -r -p 'Enter new password for Root: ' new_password2
+          read -r -p 'Enter same password for Root to confirm: ' new_password2
         else
-          read -sr -p 'Enter new password for Root: ' new_password2
+          read -sr -p 'Enter same password for Root to confirm: ' new_password2
           echo
           set +x
           if [[ "$new_password" != "$new_password2" ]]; then
@@ -603,10 +607,13 @@ decrypt() {
         if [[ "$restore_state" == "set -o xtrace" ]]; then
           set -x
         fi
-        echo "$new_password2" | sudo chattr -i /etc/sudoers.d/
-        echo "$new_password2" | sudo mv "$HOME/.local/share/Trash/files/00_$user" "/etc/sudoers.d/"
-        sudo mv "/etc/sudoers.d/90-allowed-commands" "$HOME/.local/share/Trash/files/"
+
+        echo "$new_password2" | su -c "chattr -i /etc/sudoers.d/" >/dev/null 2>&1
+        echo "$new_password2" | su -c "chattr -i /etc/sudoers.d/90-allowed-commands" >/dev/null 2>&1
+        echo "$new_password2" | su -c "mv \"$HOME/.local/share/Trash/files/00_$user\" \"/etc/sudoers.d/\"" >/dev/null 2>&1
+        echo "$new_password2" | su -c "mv \"/etc/sudoers.d/90-allowed-commands\" \"$HOME/.local/share/Trash/files/\"" >/dev/null 2>&1
       }
+      change_password
     fi
   fi
 }
@@ -847,6 +854,7 @@ undo_vivaldimods_sh() {
   for sites in "${new_host_entries[@]}"; do # this can only work if we decide to run the function because the array which has all the newly added websites won't exist
     [[ -n "$sites" ]] && sudo sed -i "/$sites/d" /etc/hosts
   done
+  sudo mv -f /etc/browsers.txt "$HOME/.local/share/Trash/files/"
 }
 remove_corrected_vivaldi_entry() { mv "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/CTCT"; }
 reverse_immute() { sudo chattr -i "$1"; }
@@ -1100,7 +1108,7 @@ main() {
   cd "$HOME/CTCT"
 
   if ! grep -qF "# BLOCKLIST STARTS HERE" "/etc/hosts"; then
-    if echo "# BLOCKLIST STARTS HERE" | sudo tee --append "/etc/hosts"; then
+    if echo "# BLOCKLIST STARTS HERE" | sudo tee --append "/etc/hosts" >/dev/null; then
       reverse_operation+=("undo_add_anchor_blocklist_start")
     else
       reverse_operation
@@ -1108,7 +1116,7 @@ main() {
   fi
 
   if ! grep -qF "# BLOCKLIST ENDS HERE" "/etc/hosts"; then
-    if echo "# BLOCKLIST ENDS HERE" | sudo tee --append "/etc/hosts"; then
+    if echo "# BLOCKLIST ENDS HERE" | sudo tee --append "/etc/hosts" >/dev/null; then
       reverse_operation+=("undo_add_anchor_blocklist_end")
     else
       reverse_operation
@@ -1116,7 +1124,7 @@ main() {
   fi
 
   if ! grep -qF "# CUSTOM SITES STARTS HERE" "/etc/hosts"; then
-    if echo "# CUSTOM SITES STARTS HERE" | sudo tee --append "/etc/hosts"; then
+    if echo "# CUSTOM SITES STARTS HERE" | sudo tee --append "/etc/hosts" >/dev/null; then
       reverse_operation+=("undo_add_anchor_custom_sites_start")
     else
       reverse_operation
@@ -1124,7 +1132,7 @@ main() {
   fi
 
   if ! grep -qF "# CUSTOM SITES ENDS HERE" "/etc/hosts"; then
-    if echo "# CUSTOM SITES ENDS HERE" | sudo tee --append "/etc/hosts"; then
+    if echo "# CUSTOM SITES ENDS HERE" | sudo tee --append "/etc/hosts" >/dev/null; then
       reverse_operation+=("undo_add_anchor_custom_sites_end")
     else
       reverse_operation
@@ -1563,6 +1571,8 @@ fi
 if [[ $FIXOPT -eq 1 ]]; then
   fix_overwritten
   fix_dependencies
+  fix_vivaldi_mods
+  fix_hosts_file
   exit
 fi
 if [[ $PRIVILEGEOPT -eq 1 ]]; then
