@@ -171,9 +171,7 @@ check_dependencies() {
       missing_dependencies+=("$dep")
     fi
   done
-  if [[ "${#missing_dependencies[@]}" -eq 0 ]]; then
-    echo "No Dependencies Missing"
-  elif [[ "${#missing_dependencies[@]}" -ne 0 ]]; then
+  if [[ "${#missing_dependencies[@]}" -ne 0 ]]; then
     idk_a_good_name "missing_dependencies" 'missing dependencies'
     if [[ ! $VALIDATEOPT -eq 1 ]]; then
       exit
@@ -326,6 +324,9 @@ fix_overwritten() {
       sudo mv -f "$f3" "$HOME/.local/share/Trash/files/${basename}"
     fi
   done
+  if [[ -e /etc/browsers.txt ]]; then
+    sudo mv -f "/etc/browsers.txt" "$HOME/.local/share/Trash/files/"
+  fi
   # Deletes lines with the username and password
   sudo sed -i.bak -e '/linuxconfig/d' -e '/grub.pbkdf2.sha512/d' /etc/grub.d/40_custom
   # unrestrict Grub
@@ -338,9 +339,7 @@ fix_dependencies() {
       missing_dependencies+=("$dep")
     fi
   done
-  if [[ "${#missing_dependencies[@]}" -eq 0 ]]; then
-    echo "No Dependencies Missing"
-  elif [[ "${#missing_dependencies[@]}" -ne 0 ]]; then
+  if [[ "${#missing_dependencies[@]}" -ne 0 ]]; then
     for missing_dependency in "${missing_dependencies[@]}"; do
       sudo pacman -S --noconfirm "$missing_dependency"
     done
@@ -356,6 +355,9 @@ fix_vivaldi_mods() {
       sudo chattr -i "$mod"
       sudo mv "$mod" "$HOME/.local/share/Trash/files/"
     fi
+  done
+  for JS in "${scripts[@]}"; do
+    [[ -e "$JS" ]] && sudo sed -i "/$JS/d" /opt/vivaldi/resources/vivaldi/window.html
   done
 }
 fix_hosts_file() {
@@ -539,8 +541,7 @@ decrypt() {
     exit
   else
     if [[ -e "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" ]]; then
-      time_in_file=$(awk 'NR==3 {$1=$2=$3=""; print $0}' "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" | xargs -I {} date -d "{}" "+%s")
-      epoch_time_in_file=$((((round - 1) * period) + genesis))
+      epoch_time_in_file=$(awk 'NR==3 {$1=$2=$3=""; print $0}' "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" | xargs -I {} date -d "{}" "+%s")
       formatted_epoch_time_in_file=$(date -d "@$epoch_time_in_file" "+%X %x")
       today=$(date -d today +%s)
       how_old_is_file=$((today - epoch_time_in_file))
@@ -597,9 +598,8 @@ decrypt() {
           echo
           set +x
           if [[ "$new_password" != "$new_password2" ]]; then
-            echo_red "Password doesn't match. Try again"
-            countdown 3
-            change_password
+            echo_red "Password doesn't match. Run $FILE_PATH (-D | --decrypt) to try again"
+            return
           fi
         fi
         echo "$old_password" | su -c "echo 'root:$new_password' | chpasswd"
@@ -691,7 +691,7 @@ multi_flag_error_check() {
   local arg1="$3"
   local arg2="$4"
   local second_argument="$5"
-  echo "$arg2" | awk -F: -v option="$option" -v flag="$flag" second_argument="$second_argument" '{
+  echo "$arg2" | awk -F: -v option="$option" -v flag="$flag" -v second_argument="$second_argument" '{
     if (NF >= 3) {
         print "ERROR: Colons are meant to seperate the" option "from the" second_argument
         print "You likely have a colon in your argument for" flag
@@ -778,12 +778,12 @@ display_sites_with_N() {
     echo -e "    \033[1m'sunday'\033[0m          ends the focus the next sunday"
     echo -e "    \033[1m'tomorrow 12am'\033[0m   ends the focus at 12:00 AM tomorrow"
     read -rp "Enter a time (in natural language) to unblock $url:" "time_given"
-    multi_flag_error_check "--add-website" "WEBSITE" "$url" "$time_given"
+    multi_flag_error_check "--add-website" "WEBSITE" "$url" "$time_given" "duration"
     add_X 'website' "$url" "$time_given"
     break
   done
 }
-check-sites() {
+check_sites() {
   curl -s http://localhost:9222/json/list | awk -F '"' '/"url": "https?:\/\// { sub(/^https?:\/\//, "", $4); print $4 }'
   # Source - https://stackoverflow.com/a/226724
   # Posted by Myrddin Emrys, modified by community. See post 'Timeline' for change history
@@ -1626,7 +1626,7 @@ if [[ $CHECKALLFOCUSOPT -eq 1 ]]; then
 fi
 
 if [[ $SHOWTABSOPT -eq 1 ]]; then
-  display_sites_with_N
+  check_sites
   exit
 fi
 

@@ -102,6 +102,7 @@ focus() {
   # It is this complicated to ensure it can manage any character in a file(except newlines)
   while IFS= read -r process; do
     [[ -z "$process" ]] && continue
+    #  DON'T CHANGE THIS LINE! shellcheck will get mad at you for this following line. It works so don't touch it
     escaped=$(printf '%s' "$process" | sed -e 's/[.[\*^$()+?{|\\]/\\&/g')
     [[ -z "$escaped" ]] && continue # i ain't taking any risks. I don't want any empty strings.
     mapfile -t -O "${#PIDS[@]}" PIDS < <(pgrep -f -- "$escaped")
@@ -122,13 +123,34 @@ focus_attr() {
     return
   fi
   local file="/etc/file-focus.txt"
-  awk -v current_round="$current_round" -v file="$file" -F '\"' '{
+  local -a scripts=() important_files important_files_to_append all_files_to_block
+  important_files=('/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pacman.d/hooks/grub1.hook' '/etc/pacman.d/hooks/grub2.hook' '/etc/pacman.d/hooks.bin/vivaldimods.sh' '/etc/systemd/system/closetabs.service' '/etc/systemd/system/CTCT.target.wants/' '/etc/matt_damon.sh' "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" '/etc/grub.d/40_custom' '/etc/grub.d/10_linux' '/opt/vivaldi/resources/vivaldi/window.html')
+  important_files_to_append=('/etc/browsers.txt' '/etc/hosts' '/etc/file-focus.txt' '/etc/process-focus.txt' '/etc/website-focus.txt')
+  mapfile -t scripts_orig < <(curl -s "https://api.github.com/repos/MrSavageBanana/CTCT/contents/Custom_Vivaldi_JS(AI)" | awk -F'\"' '/"name":/ {print $4}') # current scripts in the folder
+  for mod in "${scripts_orig[@]}"; do
+    scripts+=("/opt/vivaldi/resources/vivaldi/${mod}")
+  done
+  all_files_to_block=(
+    "${important_files[@]}"
+    "${important_files_to_append[@]}"
+    "${scripts[@]}"
+  )
+  IFS='|' formatted_all_files_to_block="${all_files_to_block[*]}"
+  awk -v current_round="$current_round" -v file="$file" -v input="$formatted_all_files_to_block" -F '\"' '
+  BEGIN {
+      n = split(input, arr, "|")
+    }
+  {
   focus_file = $2
   round_to_end = $4
   if (round_to_end < current_round) {
   cmd2 = "sudo chattr -i " focus_file
+    for (i = 1; i <= n; i++) {
+      if (arr[i] == focus_file) {
+        next
+      }
+    }
   system(cmd2)
-  system(cmd)
  } else {
   cmd3 = "sudo chattr +i " focus_file
   system(cmd3)
