@@ -1,12 +1,14 @@
 #!/bin/bash
-# created with Claude. Account: Burhan Ra'if Kouri
+echo_red() { # for things that needs the users attention
+  builtin echo -e "\033[38;2;255;0;0m >>> $* <<< \033[0m"
+}
 current_round=$(curl -Ss https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/latest | awk -F '[\":,]' '{print $4}')
 if [[ -z $current_round ]]; then
   CURL_FAILED=true
 fi
 check_dependencies() {
   # just the dependencies that vivaldimods and matt_damon rely on.
-  local deps=("awk" "basename" "bash" "chattr" "curl" "diff" "echo" "file" "grep" "kil" "mapfile" "pgrep" "readarray" "rm" "sed" "strace" "sudo" "systemctl" "tee" "uniq" "xargs")
+  local deps=("awk" "basename" "bash" "chattr" "curl" "diff" "echo" "file" "grep" "kill" "pgrep" "rm" "sed" "strace" "sudo" "systemctl" "tee" "uniq" "xargs")
   for dep in "${deps[@]}"; do
     if ! command -v "$dep" >/dev/null 2>&1; then
       missing_dependencies+=("$dep")
@@ -18,15 +20,16 @@ check_dependencies() {
     echo_red "${#missing_dependencies[@]}" 'missing dependencies!:'
     for missing_dependency in "${missing_dependencies[@]}"; do
       # has to attempt to install missing dependencies.
-      sudo pacman -S --needed --noconfirm "$missing_dependency"
+      sudo pacman -S --quiet --needed --noconfirm "$missing_dependency"
     done
   else
     echo_red "missing_dependencies array is not working. Array:"
     "${missing_dependencies[@]}"
     exit
   fi
-
 }
+check_dependencies
+
 closetabs() {
   domains=()
   ids=()
@@ -51,25 +54,40 @@ closetabs_focus() {
     return
   fi
   local file="/etc/website-focus.txt"
-  local -a domains=() ids=()
+  local -a domains=() ids=() types=()
   live_entries=$(awk -v current_round="$current_round" -F '"' '
     { round[$2]=$4 }
     END { for (site in round) if (round[site] >= current_round) print "\""site"\" \""round[site]"\"" }
   ' "$file")
 
   # get the existing domains
-  while IFS=$'\t' read -r domain id; do
+  while IFS=$'\t' read -r domain id tabtype; do
     domains+=("$domain")
     ids+=("$id")
+    types+=("$tabtype")
   done < <(
     curl -s http://localhost:9222/json/list | awk -F '"' '
-    /"id":/ { id = $4 }
-    /"url": "https?:\/\// { sub(/^https?:\/\//, "", $4); print $4 "\t" id }
-    '
+    /"id":/ { 
+        id = $4 
+    }
+    /"type":/ { 
+        type = $4 
+    }
+    /"url": "https?:\/\// { 
+        sub(/^https?:\/\//, "", $4)
+        print $4 "\t" id "\t" type 
+    }
+
+'
   )
   for i in "${!domains[@]}"; do
     local tab_url="${domains[$i]}"
     local tab_id="${ids[$i]}"
+    local tab_type="${types[$i]}"
+
+    if [[ "$tab_type" != "page" ]]; then
+      continue
+    fi
 
     while read -r blocked_site _; do # the underscore is to throw away the round number
       blocked_site="${blocked_site%\"}"
@@ -77,9 +95,14 @@ closetabs_focus() {
 
       # shellcheck disable=SC2053
       # Used for disabling the glob error for here. We WANT it to glob
-      if [[ "$tab_url" == $blocked_site ]]; then
-        curl -s "http://localhost:9222/json/close/$tab_id" >/dev/null
-        break
+      if [[ ! -z "$blocked_site" ]]; then
+        if [[ $tab_url == $blocked_site ]]; then
+          echo "KILLED $tab_url BECAUSE IT MATCHES $blocked_site"
+          curl -s "http://localhost:9222/json/close/$tab_id" >/dev/null
+          break
+        elif [[ $tab_url != $blocked_site ]]; then
+          echo "DIDN'T KILL $tab_url BECAUSE IT DOESN' MATCH $blocked_site"
+        fi
       fi
     done <<<"$live_entries"
   done
@@ -105,7 +128,7 @@ focus() {
     #  DON'T CHANGE THIS LINE! shellcheck will get mad at you for this following line. It works so don't touch it
     escaped=$(printf '%s' "$process" | sed -e 's/[.[\*^$()+?{|\\]/\\&/g')
     [[ -z "$escaped" ]] && continue # i ain't taking any risks. I don't want any empty strings.
-    mapfile -t -O "${#PIDS[@]}" PIDS < <(pgrep -f -- "$escaped")
+    mapfile -t -O "${#PIDS[@]}" PIDS < <(pgrep -f -- "\b${escaped}\b")
   done <<<"$live_processes"
   # dedupe, since two names could theoretically match overlapping PIDs
   mapfile -t PIDS < <(printf '%s\n' "${PIDS[@]}" | sort -un)
@@ -115,6 +138,8 @@ focus() {
     fi
   done
   for pid2 in "${PIDS[@]}"; do
+    echo "KILLED $(cat /proc/"${pid2}"/cmdline | head -n 1)"
+    # TODO: Show why a process was killed like i did on line 97 for closetabs_focus. Even though saying the process it killed could be good enough, we can't take chances if the script decides to kill a random process
     kill "$pid2"
   done
 }
@@ -124,6 +149,7 @@ focus_attr() {
   fi
   local file="/etc/file-focus.txt"
   local -a scripts=() important_files important_files_to_append all_files_to_block
+  local IFS='|'
   important_files=('/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pacman.d/hooks/grub1.hook' '/etc/pacman.d/hooks/grub2.hook' '/etc/pacman.d/hooks.bin/vivaldimods.sh' '/etc/systemd/system/closetabs.service' '/etc/systemd/system/CTCT.target.wants/' '/etc/matt_damon.sh' "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" '/etc/grub.d/40_custom' '/etc/grub.d/10_linux' '/opt/vivaldi/resources/vivaldi/window.html')
   important_files_to_append=('/etc/browsers.txt' '/etc/hosts' '/etc/file-focus.txt' '/etc/process-focus.txt' '/etc/website-focus.txt')
   mapfile -t scripts_orig < <(curl -s "https://api.github.com/repos/MrSavageBanana/CTCT/contents/Custom_Vivaldi_JS(AI)" | awk -F'\"' '/"name":/ {print $4}') # current scripts in the folder
@@ -135,7 +161,7 @@ focus_attr() {
     "${important_files_to_append[@]}"
     "${scripts[@]}"
   )
-  IFS='|' formatted_all_files_to_block="${all_files_to_block[*]}"
+  formatted_all_files_to_block="${all_files_to_block[*]}"
   awk -v current_round="$current_round" -v file="$file" -v input="$formatted_all_files_to_block" -F '\"' '
   BEGIN {
       n = split(input, arr, "|")
@@ -203,10 +229,55 @@ read_desktop_files() {
     ~/.local/share/applications /var/lib/flatpak/app/*/current/active/files/share/applications 2>/dev/null | xargs awk -F'[= ]' \
     '/^Exec=/{print $2}' /usr/share/applications/vivaldi-stable.desktop | uniq
 }
+read_desktop_files_from_tmp_directory_and_get_absolute_path_to_binary() {
+  grep -RlZ --include="*.desktop" "Categories=.*WebBrowser" /tmp 2>/dev/null |
+    xargs -0 -r awk -F'[= ]' '/^Exec=/ { d = FILENAME; sub(/[^\/]*$/, "", d); print d $2; nextfile }'
+}
 
+#EXPERIMENTAL
+readonly ENGINE_RE='/libxul\.so|/v8_context_snapshot\.bin|/snapshot_blob\.bin|/resources\.pak|/icudtl\.dat|libwebkit2gtk|libwebkitgtk-6|libWPEWebKit|libQt[56]WebEngineCore'
+
+is_main_process() {
+  local cmdline
+  cmdline=$(tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null) || return 1
+  [[ -n $cmdline && $cmdline != *--type=* && $cmdline != *-contentproc* ]]
+}
+
+classify_engine_process() {
+  local pid=$1 maps=/proc/$1/maps exe dir
+  exe=$(readlink -- "/proc/$pid/exe" 2>/dev/null) || return 1
+  exe=${exe% (deleted)}
+  dir="/proc/$pid/root${exe%/*}"
+
+  if grep -q '/libxul\.so' "$maps"; then
+    [[ -e $dir/browser/omni.ja ]] && echo browser || echo embedded
+  elif grep -qE 'libwebkit2gtk|libwebkitgtk-6|libWPEWebKit|libQt[56]WebEngineCore' "$maps"; then
+    echo browser # no clean frontend/embedding split for these
+  elif grep -q '/libcef\.so' "$maps" ||
+    compgen -G "$dir/resources/*.asar" >/dev/null ||
+    [[ ${exe##*/} == electron* ]]; then
+    echo embedded
+  else
+    echo browser # matched ENGINE_RE, so it's Chromium with no embedding kit
+  fi
+}
+list_engine_processes() {
+  local mapsfile pid exe
+  while IFS= read -r mapsfile; do
+    pid=${mapsfile#/proc/}
+    pid=${pid%/maps}
+    is_main_process "$pid" || continue
+    exe=$(readlink -- "/proc/$pid/exe" 2>/dev/null) || continue
+    local verdict="$(classify_engine_process "$pid")"
+    if [[ "$verdict" == "browser" ]]; then
+      echo ${exe% (deleted)}
+    fi
+  done < <(grep -lE -- "$ENGINE_RE" /proc/[0-9]*/maps 2>/dev/null)
+}
 load_browsers() {
   mapfile -t browsers < <(read_desktop_files)
-  # readarray -t -O "${#browsers[@]}" browsers < "/etc/browsers.txt" # this will add duplicates likely but it isn't that big of a deal.
+  mapfile -t -O "${#browsers[@]}" browsers < <(read_desktop_files_from_tmp_directory_and_get_absolute_path_to_binary)
+  mapfile -t -O "${#browsers[@]}" browsers < <(list_engine_processes)
   # This is from gemini and will remove duplicates
   readarray -t browsers < <(
     {

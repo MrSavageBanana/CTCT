@@ -47,27 +47,21 @@ for item in "${INSERT_BEGIN[@]}"; do
     DUPLICATE_MODS+=("$item")
   else
     sed -i "s|$ANCHOR|&\n\t$item|" "$FILE"
-    echo "Inserted $item with indentation."
+    # echo "DEBUG:Inserted $item with indentation."
   fi
 done
 
-echo "${#DUPLICATE_MODS[@]}" 'mods are already indented.'
+# echo "DEBUG: ${#DUPLICATE_MODS[@]}" 'mods are already indented.'
 # Check that /etc/hosts isn't missing anything from the mirror, and add what's missing
 set +x # to clean up xtrace output from showing the thousands of urls.
 extra_mirrors=(
 )
 cleanup() {
   curl -fSs --connect-timeout 20 --max-time 30 "$1" |
-    sed 's/#.*//' |
-    sed 's/[[:space:]]*$//' |
-    sed '/^[[:space:]]*$/d' |
-    sort
+    sed -n '/^0.0.0.0/p'
 }
-mirror=$(curl -fSs --connect-timeout 20 --max-time 30 https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/gambling-porn-only/hosts |
-  sed 's/#.*//' |
-  sed 's/[[:space:]]*$//' |
-  sed '/^[[:space:]]*$/d' |
-  sort)
+mirror=$(curl -fSs --connect-timeout 20 --max-time 30 https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/fakenews-gambling-porn/hosts |
+  sed -n '/^0.0.0.0/p')
 
 current=$(awk '/0.0.0.0/ { count++ } count >= 2' /etc/hosts |
   sed 's/#.*//' |
@@ -96,7 +90,7 @@ else
   # Claude gave me this idea for implementing my  countdown
   count=0
   while IFS= read -r; do
-    echo -ne "Added $count entries\r"
+    # echo -ne "DEBUG: Added $count entries\r"
     ((count++))
   done <<<"$missing"
 
@@ -108,5 +102,5 @@ else
     set -x
   fi
   chattr +a /etc/hosts
-  echo "Done."
+  # echo "DEBUG: Done."
 fi

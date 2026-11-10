@@ -1,19 +1,29 @@
 #!/bin/bash
-# contemplating whether to create different script files and source them. This script is getting messy.
 # shellcheck disable=SC2034
 # shellcheck disable=SC1090
 # For disabling the messages when the exit message is there:
 # shellcheck disable=SC2317
 # shellcheck disable=SC2329
-exit # if this is accidentally ran. I don't want to ruin my computer. Remove this when needed and the shellcheck lines above
+echo_red() { # for things that needs the users attention
+  builtin echo -e "\033[38;2;255;0;0m >>> $* <<< \033[0m"
+}
+safety() {
+  echo_red "SAFETY IS ON" >&2
+  exit 1
+}
+# COMMENT OUT THIS LINE
+# vvvvvvvvvvvvvvvvvvvvvv
+safety
+# ^^^^^^^^^^^^^^^^^^^^^
 backup_timestamp=$(date '+%Y-%m-%dT%H-%M-%S')
 readonly backup_timestamp
 restore_state=$(set +o | grep -F -- '-o xtrace' || true) # this checks if the script was run with bash -x so after it hides the passwords or the messy output, it shows the output of -x
+# if the script was not run with -x then turn on BASH_XTRACEFD
 if [[ ! "$restore_state" == "set -o xtrace" ]]; then
-  exec 3>"$HOME/${backup_timestamp}.log"
+  exec 3>>"$HOME/${backup_timestamp}.log"
   export BASH_XTRACEFD=3
-  set -x
 fi
+
 echo_red() { # for things that needs the users attention
   builtin echo -e "\033[38;2;255;0;0m >>> $* <<< \033[0m"
 }
@@ -27,7 +37,7 @@ countdown() {
     fi
     ((secs--))
   done
-  if [[ "$restore_state" == "set -o xtrace" ]]; then
+  if [[ -z "${BASH_XTRACEFD:-}" ]]; then
     set -x
   fi
 }
@@ -66,6 +76,11 @@ check_file() {
     perform_rollback
   fi
 }
+exit_cleanly() {
+  echo $?
+  echo "Above was Exit code of command that failed"
+  perform_rollback
+}
 SCRIPT_NAME=${BASH_SOURCE[0]##*/}
 SCRIPT_DIR=$(
   if cd -- "${BASH_SOURCE[0]%/*}" 2>/dev/null; then
@@ -78,8 +93,8 @@ FILE_PATH="$SCRIPT_DIR/$SCRIPT_NAME"
 # flag idea: a quiet flag which will remove any output that may show up.
 # The users can specify what they want gone and
 # it will write to a variable that will be checked before the variable is used
-SHORT="vfP:pS:b:Dshd:w:a:F:tc:H:"
-LONG="validate,fix,privileges:,print-privileges,sites:,blocklist:,decrypt,show-password,help,date:,add-website:,add-process:,add-file:,check-current-focus:,show-tabs,add-website-block"
+SHORT="vfP:pS:b:Dshd:w:a:F:c:Ctj:B"
+LONG="validate,fix,privilege:,print-privileges,site:,blocklist:,decrypt,show-password,help,date:,add-website:,add-process:,add-file:,check-current-focus:,check-all-focus,show-tabs,add-js-script:,brute-force"
 if ! PARSED=$(getopt --options "$SHORT" --longoptions "$LONG" --name "$0" -- "$@"); then
   echo "Try '$SCRIPT_NAME --help' for more information"
   exit 2
@@ -93,9 +108,13 @@ fi
 
 exec 9>/tmp/myscript.lock
 flock -n 9 || {
-  echo_red "Already running" >&2
+  echo_red "CTCT is busy" >&2
   exit 1
 }
+MATT_DAMON_FILE="$HOME/CTCT/matt_damon.sh"
+MATT_DAMON_DIR=$(dirname $MATT_DAMON_FILE)
+VIVALDIMODS_FILE="$HOME/CTCT/vivaldimods.sh"
+VIVALDIMODS_DIR=$(dirname $VIVALDIMODS_FILE)
 declare -a missing_dependencies=()
 declare -a overwritten_files=()
 declare -a applied_vivaldi_mods=()
@@ -113,7 +132,7 @@ declare -a reverse_operation=()
 declare -a CUSTOM_SITES=()
 declare -a CUSTOM_BLOCKLISTS=()
 important_files=('/etc/pacman.d/hooks/vivaldiupdate.hook' '/etc/pacman.d/hooks/grub1.hook' '/etc/pacman.d/hooks/grub2.hook' '/etc/pacman.d/hooks.bin/vivaldimods.sh' '/etc/systemd/system/closetabs.service' '/etc/systemd/system/CTCT.target.wants/' '/etc/matt_damon.sh' "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" '/etc/grub.d/40_custom' '/etc/grub.d/10_linux' '/opt/vivaldi/resources/vivaldi/window.html')
-important_files2=('/etc/sudoers' '/etc/sudoers.d' '/etc/sudoers.d/90-allowed-commands')
+important_files2=('/etc/sudoers' '/etc/sudoers.d' '/etc/sudoers.d/90-allowed-commands' '/usr/bin/systemctl')
 important_files_to_create=('/etc/file-focus.txt' '/etc/process-focus.txt' '/etc/website-focus.txt')
 important_files_to_append=('/etc/browsers.txt' '/etc/hosts' '/etc/file-focus.txt' '/etc/process-focus.txt' '/etc/website-focus.txt')
 mapfile -t scripts_orig < <(curl -s "https://api.github.com/repos/MrSavageBanana/CTCT/contents/Custom_Vivaldi_JS(AI)" | awk -F'\"' '/"name":/ {print $4}') # current scripts in the folder
@@ -121,14 +140,14 @@ for mod in "${scripts_orig[@]}"; do
   scripts+=("/opt/vivaldi/resources/vivaldi/${mod}")
   potentially_overwritten_files+=("/opt/vivaldi/resources/vivaldi/${mod}")
 done
-potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/systemd/system/CTCT.target.wants/closetabs.service" "/etc/matt_damon.sh" "/etc/browsers.txt" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "/etc/sudoers.d/90-allowed-commands" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/.local/share/Trash/files/vivaldimods_output.txt" "$HOME/.local/share/Trash/files/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}" "$HOME/.local/share/Trash/files/tle" "/etc/file-focus.txt" "/etc/process-focus.txt" "/etc/website-focus.txt")
+potentially_overwritten_files=("/etc/systemd/system/closetabs.service" "/etc/systemd/system/CTCT.target.wants/closetabs.service" "/etc/matt_damon.sh" "/etc/browsers.txt" "/etc/pacman.d/hooks.bin/vivaldimods.sh" "/etc/pacman.d/hooks/vivaldiupdate.hook" "/etc/pacman.d/hooks/grub1.hook" "/etc/pacman.d/hooks/grub2.hook" "$HOME/CTCT/vivaldimods_output.txt" "$HOME/.local/share/applications/vivaldi-stable.desktop" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" "/etc/sudoers.d/90-allowed-commands" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.lock" "$HOME/.local/share/Trash/files/GRUB_PASSWORD-KEEP_SAFE.txt" "$HOME/.local/share/Trash/files/vivaldimods_output.txt" "$HOME/.local/share/Trash/files/vivaldi-stable.desktop" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}" "$HOME/.local/share/Trash/files/tle" "/etc/file-focus.txt" "/etc/process-focus.txt" "/etc/website-focus.txt" "$HOME/oldstate.txt" "$HOME/newstate.txt")
 potentially_overwritten_directories=("$HOME/CTCT/" "/etc/systemd/system/CTCT.target.wants" "$HOME/.local/share/Trash/files/hooks.bin" "$HOME/.local/share/Trash/files/hooks" "$HOME/.local/share/Trash/files/etc" "$HOME/.local/share/Trash/files/pacman.d" "$HOME/.local/share/Trash/files/sudoers.d" "$HOME/.local/share/Trash/files/go" "$HOME/.local/share/Trash/files/CTCT")
 user=$(whoami)
 export LC_ALL=C
 trap 'perform_rollback' ERR
 trap "" SIGINT SIGTSTP SIGQUIT # can't risk the user exiting the script and messing with things mid through
 # TODO: Attempt to fix the missing dependencies. DEPENDS ON: Auto Detect the system's package manager and use it instead of just pacman. At least Debian and Fedora
-deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" "awk" "dialog" "git" "grep" "curl" "chpasswd" "chattr" "systemctl" "grep" "tar" "diff" "find" "md5sum" "sort" "bash" "tr" "fold" "head" "shred" "whoami" "basename" "pgrep" "kill" "xargs" "uniq" "file" "strace" "vivaldi" "pacman")
+deps=("flock" "grub-mkpasswd-pbkdf2" "sed" "date" "rm" "mv" "sudo" "mkdir" "cp" "tee" "grub-mkconfig" "cat" "awk" "dialog" "git" "grep" "curl" "chpasswd" "chattr" "systemctl" "grep" "tar" "diff" "find" "md5sum" "sort" "bash" "tr" "fold" "head" "shred" "whoami" "basename" "pgrep" "kill" "xargs" "uniq" "file" "strace" "vivaldi" "pacman" "hashcat")
 compare_states() {
   diff "$1" "$2" | awk '
     /^[<>] / {
@@ -176,6 +195,8 @@ check_dependencies() {
     if [[ ! $VALIDATEOPT -eq 1 ]]; then
       exit
     fi
+  elif [[ "${#missing_dependencies[@]}" == 0 ]]; then
+    echo -e "\033[38;2;124;252;0m No Missing Dependencies \033[0m"
   fi
 }
 check_overwritten() {
@@ -186,9 +207,9 @@ check_overwritten() {
   done
   if [[ "${#overwritten_files[@]}" -ne 0 ]]; then
     idk_a_good_name "overwritten_files" "overwritten files"
-    if [[ ! $VALIDATEOPT -eq 1 ]]; then
-      exit
-    fi
+    EXITVALIDATE=1
+  elif [[ "${#overwritten_files[@]}" == 0 ]]; then
+    echo -e "\033[38;2;124;252;0m No Files Will Be Overwritten \033[0m"
   fi
 
   for dir in "${potentially_overwritten_directories[@]}"; do
@@ -198,17 +219,16 @@ check_overwritten() {
   done
   if [[ "${#overwritten_dirs[@]}" -ne 0 ]]; then
     idk_a_good_name "overwritten_dirs" "overwritten dirs"
-    if [[ ! $VALIDATEOPT -eq 1 ]]; then
-      exit
-    fi
+    EXITVALIDATE=1
+  elif [[ "${#overwritten_dirs[@]}" == 0 ]]; then
+    echo -e "\033[38;2;124;252;0m No Directories Will Be Overwritten \033[0m"
+  fi
+  if [[ ! $VALIDATEOPT -eq 1 && $EXITVALIDATE -eq 1 ]]; then
+    exit
   fi
 }
 grab_dir_state() {
   local state_name="$1"
-  if [[ -e "$HOME/$state_name" ]]; then
-    mv -f "$HOME/$state_name" "$HOME/.local/share/Trash/files/"
-  fi
-
   local total=0
   local count
   for d in "${affected_dirs[@]}"; do
@@ -230,6 +250,7 @@ grab_dir_state() {
       count=$((count + 1))
       echo -ne "Finished checking $count/$total files\r"
     done
+    echo
     echo "Finished capturing filesystem state"
   fi
 }
@@ -285,6 +306,7 @@ fix_overwritten() {
     "${important_files_to_append[@]}"
     "${potentially_overwritten_files[@]}"
     "${potentially_overwritten_directories[@]}"
+    "${scripts[@]}"
   )
   for f in "${all_potentially_problomatic_files[@]}"; do
     if [[ -e "$f" ]]; then
@@ -297,6 +319,8 @@ fix_overwritten() {
   for f2 in "${potentially_overwritten_files[@]}"; do
     if [[ -e "$f2" ]]; then
       if [[ "$f2" == "$HOME/.local/share/Trash/files/"* ]]; then
+        # TODO: Fix this so it doesn't randomly rename
+        # I HATE THIS because it renames files but it works.
         new_path="$f2"
         add=1
         while [[ -e "$new_path" ]]; do
@@ -331,7 +355,10 @@ fix_overwritten() {
   sudo sed -i.bak -e '/linuxconfig/d' -e '/grub.pbkdf2.sha512/d' /etc/grub.d/40_custom
   # unrestrict Grub
   sudo sed -i 's/--class os\b\( --unrestricted\)*/--class os --unrestricted/g' /etc/grub.d/10_linux
-  sudo grub-mkconfig -o /boot/grub/grub.cfg
+  if ! GrubErrorMessage=$(sudo grub-mkconfig -o /boot/grub/grub.cfg 2>&1); then
+    echo_red "grub-mkconfig failed. Output:"
+    echo "$GrubErrorMessage"
+  fi
 }
 fix_dependencies() {
   for dep in "${deps[@]}"; do
@@ -341,13 +368,10 @@ fix_dependencies() {
   done
   if [[ "${#missing_dependencies[@]}" -ne 0 ]]; then
     for missing_dependency in "${missing_dependencies[@]}"; do
-      sudo pacman -S --noconfirm "$missing_dependency"
+      sudo pacman -S --noconfirm --needed --quiet "$missing_dependency"
     done
     echo_red "Run $FILE_PATH (-v | --validate) to confirm changes."
   fi
-  echo -ne '\n'
-  echo_red "IF CLEANING ALL LEFTOVER EFFECTS FROM CTCT, THE FOLLOWING APPLY:"
-  echo_red "remove entries from /etc/hosts yourself" # since fix_dependencies is always run with fix_overwritten, just put the fix_overwritten messages here
 }
 fix_vivaldi_mods() {
   for mod in "${scripts[@]}"; do
@@ -356,13 +380,23 @@ fix_vivaldi_mods() {
       sudo mv "$mod" "$HOME/.local/share/Trash/files/"
     fi
   done
-  for JS in "${scripts[@]}"; do
-    [[ -e "$JS" ]] && sudo sed -i "/$JS/d" /opt/vivaldi/resources/vivaldi/window.html
+  for JS in "${scripts_orig[@]}"; do
+    if grep -qF "$JS" /opt/vivaldi/resources/vivaldi/window.html; then
+      sudo sed -i "/$JS/d" /opt/vivaldi/resources/vivaldi/window.html
+    fi
   done
 }
 fix_hosts_file() {
-  sudo sed -i '/# BLOCKLIST STARTS HERE/,/# BLOCKLIST ENDS HERE/d' /etc/hosts
-  sudo sed -i '/# CUSTOM SITES STARTS HERE/,/# CUSTOM SITES ENDS HERE/d' /etc/hosts
+  if grep -qF '# BLOCKLIST STARTS HERE' /etc/hosts; then
+    if grep -qF '# BLOCKLIST ENDS HERE' /etc/hosts; then
+      sudo sed -i '/# BLOCKLIST STARTS HERE/,/# BLOCKLIST ENDS HERE/d' /etc/hosts
+    fi
+  fi
+  if grep -qF '# CUSTOM SITES STARTS HERE' /etc/hosts; then
+    if grep -qF '# CUSTOM SITES ENDS HERE' /etc/hosts; then
+      sudo sed -i '/# CUSTOM SITES STARTS HERE/,/# CUSTOM SITES ENDS HERE/d' /etc/hosts
+    fi
+  fi
 }
 anchor() {
   # Use: anchor "THING TO INSERT" "ANCHOR" "THE Nth INSTANCE of the THING TO INSERT" "FILE TO INSERT" "SHOW OUTPUT true?"
@@ -391,7 +425,7 @@ anchor() {
   fi
   set +o nounset
 }
-edit_privileges() {
+edit_privilege() {
   set -o nounset
   local INSERTS="$1"
   local ERROR=0
@@ -406,8 +440,9 @@ edit_privileges() {
     echo "REMOVE SLASHES"
     ((ERROR++))
   fi
+  # TODO: this should be specififically searching where the binaries_to_allo array is
   if grep -qF "$INSERTS" "$FILE_PATH"; then
-    # no message because the anchor function would have already told them that it was a duplciate entry
+    echo_red "$INSERTS is a DUPLICATE ENTRY!"
     ((ERROR++))
   fi
   if [[ "$ERROR" -gt 0 ]]; then
@@ -415,7 +450,7 @@ edit_privileges() {
     exit
   fi
   anchor "$INSERTS" "binaries_to_allow=(" "4" "$FILE_PATH" "true"
-  echo_red "Run $FILE_PATH (-p | --print_privileges) to confirm changes."
+  echo_red "Run $FILE_PATH (-p | --print-privileges) to confirm changes."
 }
 print_binaries_to_allow() {
   echo "All Binaries Allowed:"
@@ -424,7 +459,7 @@ print_binaries_to_allow() {
   done
 }
 edit_sites() {
-  local FILE="$HOME/CTCT/vivaldimods.sh"
+  local FILE="$VIVALDIMODS_FILE"
   if [[ ! -e $FILE ]]; then
     perform_rollback
   fi
@@ -433,7 +468,7 @@ edit_sites() {
   done
 }
 edit_blocklists() {
-  local FILE="$HOME/CTCT/vivaldimods.sh"
+  local FILE="$VIVALDIMODS_FILE"
   if [[ ! -e $FILE ]]; then
     perform_rollback
   fi
@@ -441,28 +476,29 @@ edit_blocklists() {
     anchor "$blocklist" "extra_mirrors=(" "1" "$FILE" "false"
   done
 }
-
 print_help() {
   echo -e "\033[1mUsage:\033[0m"
   echo -e "  \033[1m$SCRIPT_NAME\033[0m"
   echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-v\033[0m | \033[1m--validate\033[0m"
   echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-f\033[0m | \033[1m--fix\033[0m"
   echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-p\033[0m | \033[1m--print-privileges\033[0m"
-  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-P\033[0m | \033[1m--privileges\033[0m PRIVILEGE"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-P\033[0m | \033[1m--privilege\033[0m PRIVILEGE"
   echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-w\033[0m | \033[1m--add-website\033[0m WEBSITE\033[1m:\033[0mDURATION"
   echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-a\033[0m | \033[1m--add-process\033[0m PROCESS\033[1m:\033[0mDURATION"
   echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-F\033[0m | \033[1m--add-file\033[0m FILE\033[1m:\033[0mDURATION"
   echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-c\033[0m | \033[1m--check-current-focus\033[0m FLAG"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-C\033[0m | \033[1m--check-all-focus\033[0m FLAG"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-B\033[0m | \033[1m--brute-force\033[0m"
   echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-t\033[0m | \033[1m--show-tabs\033[0m"
   echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-D\033[0m \033[1m-s\033[0m"
-  echo -e "  \033[1m$SCRIPT_NAME\033[0m [\033[1m-d\033[0m | \033[1m--date\033[0m DATE] [\033[1m-S\033[0m | \033[1m--sites\033[0m SITE] [\033[1m-b\033[0m | \033[1m--blocklist\033[0m BLOCKLIST]"
+  echo -e "  \033[1m$SCRIPT_NAME\033[0m [\033[1m-d\033[0m | \033[1m--date\033[0m DATE]\033[38;2;255;0;0m*\033[0m [\033[1m-S\033[0m | \033[1m--sites\033[0m SITE]\033[38;2;255;0;0m*\033[0m [\033[1m-b\033[0m | \033[1m--blocklist\033[0m BLOCKLIST]\033[38;2;255;0;0m*\033[0m [\033[1m-j\033[0m | \033[1m--add-js-script\033[0m SCRIPT]\033[38;2;255;0;0m*\033[0m"
   echo -e "  \033[1m$SCRIPT_NAME\033[0m \033[1m-h\033[0m | \033[1m--help\033[0m"
   echo -e "\n\033[1mOPTIONS\033[0m"
   echo -e "  \033[1m-v, --validate\033[0m\n      check that the script can run without overwriting files or missing dependencies"
   echo -e "  \033[1m-f, --fix\033[0m\n      download any missing dependencies and move overwritten files to $HOME/.local/share/Trash/files/"
-  echo -e "  \033[1m-P, --privileges\033[0m\n      add binary you want to be able to run with sudo and exit"
+  echo -e "  \033[1m-P, --privileges\033[0m\n      add command you want to be able to run with sudo and exit"
   echo -e "  \033[1m-p, --print-privileges\033[0m\n      print privileges to screen and exit"
-  echo -e "  \033[1m-S, --sites\033[0m\n      add sites to be blocked"
+  echo -e "  \033[1m-S, --site\033[0m\n      add a site to be blocked"
   echo -e "  \033[1m-b, --blocklist\033[0m\n      add a stevenblack blocklist to add to hosts"
   echo -e "  \033[1m-d, --date\033[0m\n      add a date to end the focus. format: MM\033[1m/\033[0mDD\033[1m/\033[0mYY HH\033[1m:\033[0mMM\033[1m:\033[0mSS"
   echo -e "  \033[1m-w, --add-website\033[0m\n      add a website to be blocked for some time (see DURATION below)"
@@ -470,8 +506,9 @@ print_help() {
   echo -e "  \033[1m-F, --add-file\033[0m\n      add a file or directory to be uneditable for some time (see DURATION below)"
   echo -e "  \033[1m-c, --check-current-focus\033[0m\n      print remaining time for active focus sessions. FLAG must be 'a', 'F', 'w', or their full names" # sounds weird
   echo -e "  \033[1m-C, --check-all-focus\033[0m\n      print remaining time for all focus sessions."
-  echo -e "  \033[1m-H, --add-website-block\033[0m\n      add a website to the the hosts file to block entirely"
-  echo -e "  \033[1m-t, --show-tabs\033[0m\n      display open tabs with an interactive menu to temporarily block sites"
+  echo -e "  \033[1m-t, --show-tabs\033[0m\n      display open tabs with an interactive menu to temporarily block a site"
+  echo -e "  \033[1m-j, --add-js-script\033[0m\n     Add a custom JS file to be loaded into Vivaldi "
+  echo -e "  \033[1m-B, --brute-force\033[0m\n     Attempt to brute-force the GRUB root password hash using Hashcat"
   echo -e "  \033[1m-D, --decrypt\033[0m\n      decrypt password and prompt to change it"
   echo -e "  \033[1m-s, --show-password\033[0m\n      to be used with --decrypt. shows new password user types when changing"
   echo -e "  \033[1m-h, --help\033[0m\n      show this message and exit"
@@ -483,6 +520,9 @@ print_help() {
   echo -e "    \033[1m'3 friday'\033[0m        ends the focus 3 fridays from now"
   echo -e "    \033[1m'sunday'\033[0m          ends the focus the next sunday"
   echo -e "    \033[1m'tomorrow 12am'\033[0m   ends the focus at 12:00 AM tomorrow"
+  echo -e "\033[38;2;255;0;0m WARNING \033[0m"
+  echo -e "\033[38;2;255;0;0m THIS ONLY SETS A VARIABLE\033[0m"
+  echo -e "\033[38;2;255;0;0m Running with this flag will also run the main install.\033[0m"
 }
 
 time_left() {
@@ -592,9 +632,9 @@ decrypt() {
         fi
         if [ "$SHOW_PASSWORD" == true ]; then
           set +x
-          read -r -p 'Enter same password for Root to confirm: ' new_password2
+          read -r -p 'Retype new password for Root to confirm: ' new_password2
         else
-          read -sr -p 'Enter same password for Root to confirm: ' new_password2
+          read -sr -p 'Retype new password for Root to confirm: ' new_password2
           echo
           set +x
           if [[ "$new_password" != "$new_password2" ]]; then
@@ -604,7 +644,7 @@ decrypt() {
         fi
         echo "$old_password" | su -c "echo 'root:$new_password' | chpasswd"
         echo
-        if [[ "$restore_state" == "set -o xtrace" ]]; then
+        if [[ -z "${BASH_XTRACEFD:-}" ]]; then
           set -x
         fi
 
@@ -620,7 +660,10 @@ decrypt() {
 up_to_date_JS() {
   cd "$HOME/CTCT/Custom_Vivaldi_JS(AI)/" || exit_cleanly
   for file in *js; do
-    anchor "$file" "INSERTS=(" "1" "$HOME/CTCT/vivaldimods.sh" "false"
+    anchor "$file" "INSERTS=(" "1" "$VIVALDIMODS_FILE" "false"
+  done
+  for customUserJS in "${customUserJSScripts[@]}"; do
+    anchor "$customUserJS" "INSERTS=(" "1" "$VIVALDIMODS_FILE" "false"
   done
   cd "$HOME"
 }
@@ -633,6 +676,7 @@ add_X() {
   fi
   if [[ "$time" == "END" ]]; then
     # I don't know of any better way to get the time the thing ends.
+    # TODO: When time is END, it doesn't choose the right time.
     decrypt_output=$("$HOME/go/bin/tle" --decrypt -o "$HOME/GRUB_PASSWORD-KEEP_SAFE_unlocked.txt" "$HOME/GRUB_PASSWORD-KEEP_SAFE.lock" 2>&1)
     if [[ ! -z "$decrypt_output" ]]; then
       round=$(echo "$decrypt_output" | awk -F " " '{print $7}')
@@ -664,8 +708,6 @@ add_X() {
     echo "\"$options_option\"" "\"$round\"" | sudo tee -a "/etc/process-focus.txt"
   elif [ "$option" == "file" ]; then
     echo "\"$options_option\"" "\"$round\"" | sudo tee -a "/etc/file-focus.txt"
-  elif [ "$option" == "hosts" ]; then
-    echo "$options_option $time" | sudo tee -a "/etc/hosts" # "time" is a bad variable name. Should be something better but it represents the second argument going into the hosts. AKA the domain
   else
     exit 1
   fi
@@ -715,13 +757,13 @@ check-focus() {
   local hash="52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
   local up_to_date_info genesis period drand_failed=false
   case "$file" in
-  w | W | -w | -W | add-website)
+  w | W | -w | -W | website | add-website)
     file="/etc/website-focus.txt"
     ;;
-  a | A | -A | -a | add-process)
+  a | A | -A | -a | process | add-process)
     file="/etc/process-focus.txt"
     ;;
-  F | f | -f | -F | add-file)
+  F | f | -f | -F | file | add-file)
     file="/etc/file-focus.txt"
     ;;
   *)
@@ -784,7 +826,19 @@ display_sites_with_N() {
   done
 }
 check_sites() {
-  curl -s http://localhost:9222/json/list | awk -F '"' '/"url": "https?:\/\// { sub(/^https?:\/\//, "", $4); print $4 }'
+  curl -s http://localhost:9222/json/list | awk -F '"' '
+    /"type":/ { 
+        type = $4 
+    }
+    /"url": "https?:\/\// { 
+        if (type != "page") {
+            next
+        }
+        sub(/^https?:\/\//, "", $4)
+        print $4
+    }
+
+'
   # Source - https://stackoverflow.com/a/226724
   # Posted by Myrddin Emrys, modified by community. See post 'Timeline' for change history
   # Retrieved 2026-08-19, License - CC BY-SA 4.0
@@ -802,10 +856,10 @@ check_sites() {
   done
 }
 check_vivaldi_is_not_open() {
-  cmdline=$(pgrep -fa "/opt/vivaldi/vivaldi-bin" | grep -v "type" | awk '{$1=""; print $0}' | grep --only-matching -- '--remote-debugging-port=9222' || true)
-  if [[ "$cmdline" != "--remote-debugging-port=9222" && ! -z "$cmdline" ]]; then
-    echo "close vivaldi or it will be closed when the script runs. You have 5 min."
-    countdown 300
+  cmdline=$(pgrep -fa "/opt/vivaldi/vivaldi-bin" || true)
+  if [[ -n "$cmdline" ]]; then
+    echo_red "close vivaldi. Open after script is finished"
+    exit
   fi
 }
 verify_date_syntax() {
@@ -816,21 +870,55 @@ verify_date_syntax() {
     DATE_MANUAL=false
     echo "DATE FLAG HAS BEEN REJECTED"
     echo "You will be prompted to pick a date and time again."
-    echo "DEBUG INFO:"
-    echo "formatted_date:"
-    echo "$formatted_date"
-    echo "epoch_formatted_date:"
-    echo "$epoch_formatted_date"
-    echo "today:"
-    echo "$today"
+    # echo "DEBUG INFO:"
+    # echo "formatted_date:"
+    # echo "$formatted_date"
+    # echo "epoch_formatted_date:"
+    # echo "$epoch_formatted_date"
+    # echo "today:"
+    # echo "$today"
     countdown 15 # to help them read the above output.
+  fi
+}
+brute_force() {
+  # This command can be used for knowing what password length to choose
+  # hashcat -m 7200 -b -w 1 -O -D 1 --quiet | grep -o -P '[0-9]+(?=\s+H\/s)'
+  # Steps:
+  # 1. you choose the max amount of time you want it to take to crack your password
+  # 2. convert that time to seconds
+  # 3. you continiously change N until the result is as close to the hashing speed
+  # TODO: when adding the file flag option, one of the entries has to be the length of the root password. This means that you don't need to store the password length in the same file or remember it.
+  # TODO: when adding the file flag option, before extracting the information from /etc/grub.d/40_custom, we should check the file to see if CTCT is active or not.
+  echo_red "THIS IS EXPERIEMENTAL. You will get more reliable results by running hashcat manually"
+  temporary_hash_file=$(mktemp CTCT.XXXXXXXX 2>/dev/null)
+  grep -oP '(?<=password_pbkdf2 linuxconfig )\S+' "/etc/grub.d/40_custom" >"$temporary_hash_file"
+  if [ ! -s "$temporary_hash_file" ]; then
+    echo "Hash not found"
+    rm -f "$temporary_hash_file"
+    exit 1
+  fi
+
+  read -p "Enter the password length: " password_length
+  if [[ ! $password_length =~ ^[0-9]+$ ]]; then
+    echo_red "not a valid password length"
+    exit 1
+  fi
+  echo "started on $(date +%c)"
+  echo
+  mask=$(printf '%0.s?1' $(seq 1 "$password_length"))
+  hashcat -m 7200 -a 3 -1 '?l?u?d' "$temporary_hash_file" "$mask" -w 3 -O --quiet --machine-readable --status-timer=1 -o "$HOME/cracked_result.txt" &>/dev/null
+  echo "Ended on $(date +%c)"
+  if [[ ! -e "$HOME/cracked_result.txt" ]]; then
+    echo_red "hashcat FAILED"
+  else
+    awk -F ":" '{print $2}' "$HOME/cracked_result.txt"
   fi
 }
 # Checks Ends
 # Rollback Functions Start
 undo_closetabs_creation() { sudo mv -f /etc/systemd/system/closetabs.service "$HOME/CTCT"; }
 undo_closetabs_service_enable() { sudo systemctl disable --now closetabs >/dev/null; }
-undo_move_matt_daemon() { sudo mv -f /etc/matt_damon.sh "$HOME/CTCT"; }
+undo_move_matt_daemon() { sudo mv -f /etc/matt_damon.sh "$MATT_DAMON_DIR"; }
 undo_create_hooks_bin_dir() { sudo mv -f /etc/pacman.d/hooks.bin "$HOME/.local/share/Trash/files/"; }
 undo_move_vivaldi_sh() { sudo mv -f /etc/pacman.d/hooks.bin/vivaldimods.sh "$HOME/CTCT"; }
 undo_create_hooks_dir() { sudo mv -f /etc/pacman.d/hooks "$HOME/.local/share/Trash/files"; }
@@ -848,10 +936,7 @@ undo_vivaldimods_sh() {
   for JS in "${applied_vivaldi_mods[@]}"; do
     [[ -n "$JS" ]] && sudo sed -i "/$JS/d" /opt/vivaldi/resources/vivaldi/window.html
   done
-  # some error is here. Not sure what it is:
-  #  Undoing: undo_vivaldimods_sh
-  #  sed: -e expression #1, char 18: unterminated address regex
-  for sites in "${new_host_entries[@]}"; do # this can only work if we decide to run the function because the array which has all the newly added websites won't exist
+  for sites in "${new_host_entries[@]}"; do
     [[ -n "$sites" ]] && sudo sed -i "/$sites/d" /etc/hosts
   done
   sudo mv -f /etc/browsers.txt "$HOME/.local/share/Trash/files/"
@@ -874,8 +959,24 @@ undo_create_etc_dir() { sudo mv -f /etc "$HOME/.local/share/Trash/files/"; } # t
 undo_create_pacman_d_dir() { sudo mv -f /etc/pacman.d "$HOME/.local/share/Trash/files/"; }
 # don't add all of these binaries on one line. add no text on the same line as the "binaries_to_allow=(" line. This will break the '-P, --privileges' option. Don't delete this comment.
 binaries_to_allow=(
-  "loadkeys *" "systemctl *" "ls *" "lsattr *" "curl *" "jq *" "adb *" "bat *" "blkid *" "cat *" "chmod *" "docker-compose *" "du *" "flatpak *" "fuser *" "grep *" "journalctl *" "killall *" "ln *" "mv *" "nbfc *" "pkill *" "rm *" "rmpc *" "sensors-detect *" "sleep *" "ss *" "tailscale *" "tlp *" "tlp-stat *" "touch *" "ufw *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "tee *" "visudo --check" "sed -i '/@includedir/{/@includedir /etc/sudoers.d/!d;}' /etc/sudoers" "chattr +i /etc/sudoers" "chattr +i /etc/sudoers.d" "chattr +i /etc/sudoers.d/90-allowed-commands")
-undo_create_root() { echo_red "It is not safe for this script to undo the root password creation automatically. Check file for the root password to manually change."; }
+  "systemctl suspend" "loadkeys *" "ls *" "lsattr *" "curl *" "jq *" "adb *" "bat *" "blkid *" "cat *" "chmod *" "docker-compose *" "du *" "flatpak *" "fuser *" "grep *" "journalctl *" "killall *" "ln *" "mv *" "nbfc *" "pkill *" "rm *" "rmpc *" "sensors-detect *" "sleep *" "ss *" "tailscale *" "tlp *" "tlp-stat *" "touch *" "ufw *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "systemctl status *" "systemctl is-active *" "systemctl list-units *" "systemctl list-unit-files *" "systemctl show *" "tee *" "visudo --check" "sed -i '/@includedir/{/@includedir /etc/sudoers.d/!d;}' /etc/sudoers" "chattr +i /etc/sudoers" "chattr +i /etc/sudoers.d" "chattr +i /etc/sudoers.d/90-allowed-commands")
+undo_create_root() {
+  # since the root password change failed for some reason, we can assume that the user's password is their own.
+  # So they should first test their password. If it failed, that means the password changed but chpasswd failed still. SO we need to reset their password
+  if su -c echo; then
+    echo_red "Your root password has not changed. Nothing to do"
+  else
+    echo_red "Your root password has changed. Attempting to fix..."
+    echo "if you are prompted for your password, put your root password"
+    if [[ -e $HOME/GRUB_PASSWORD-KEEP_SAFE.lock ]]; then
+      if ! decrypt; then
+        echo_red "Failed to decrypt."
+        echo_red "You will need to either wait until the password is unlocked or use hashcat or (-b | --brute-force) to crack the password"
+        echo_red "If you are able to recover your password without using those options, create a issue"
+      fi
+    fi
+  fi
+}
 undo_create_local_bin_dir() { echo_red "This folder needs to be here. Not going to undo it"; }
 undo_create_share_applications_dir() { mv -f "$HOME/.local/share/applications/" "$HOME/.local/share/Trash/files"; }
 undo_include_sudoers_d_dir() { sudo mv -f /etc/sudoers.d/ "$HOME/.local/share/Trash/files/"; }
@@ -911,16 +1012,23 @@ undo_add_anchor_blocklist_end() {
 undo_add_anchor_custom_sites_end() {
   sudo sed -i 's/# CUSTOM SITES ENDS HERE/d' "/etc/hosts"
 }
+undo_move_CTCT_dir() {
+  mv "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}" "$HOME/CTCT"
+}
+undo_save_etc_sudoers() {
+  sudo mv -f /etc/sudoers.bak /etc/sudoers
+}
 # Rollback Functions End
 # References Begin
 apply_vivaldi_mods() {
   set -o pipefail # if anything in this function, fails, this will catch it
   cd "$HOME/CTCT"
-  if [[ "$restore_state" == "set -o xtrace" ]]; then
+  if [[ -z "${BASH_XTRACEFD:-}" ]]; then
     sudo bash -x /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee "$HOME/CTCT/vivaldimods_output.txt" || exit_cleanly
   else
     sudo bash /etc/pacman.d/hooks.bin/vivaldimods.sh | sudo tee "$HOME/CTCT/vivaldimods_output.txt" || exit_cleanly
   fi
+  #TODO probably should remove the vivaldimods "inserted < ... output from running vivaldimods"
   sed -i -e "/mods are already indented/d" -e "/Nothing missing/d" -e "/Inserted <script src/d" -e "/Adding missing entries:/d" -e "/Done./d" "$HOME/CTCT/vivaldimods_output.txt"
   sudo awk '{print $2}' "$HOME/CTCT/vivaldimods_output.txt" | sudo tee tmpfile.txt >/dev/null
   sudo mv -f tmpfile.txt "$HOME/CTCT/vivaldimods_output.txt" || exit_cleanly
@@ -960,11 +1068,6 @@ correct_flag_helper() {
 
   set +o pipefail
 }
-exit_cleanly() {
-  echo $?
-  echo "Above was Exit code of command that failed"
-  perform_rollback
-}
 set +x
 readonly manual_password="wompwomp" # manual_password is for debugging/developing only
 # TODO: to make more random, give a range instead of just 32, it could be another random number? Ensures that it is harder to hashcat(i think it makes it harder)
@@ -979,7 +1082,7 @@ grub_password=$(printf '%s\n%s\n' "$chosen_password" "$chosen_password" |
   grub-mkpasswd-pbkdf2 |
   sed --quiet '3p')
 readonly grub_password
-if [[ "$restore_state" == "set -o xtrace" ]]; then
+if [[ -z "${BASH_XTRACEFD:-}" ]]; then
   set -x
 fi
 current_date=$(date)
@@ -1022,7 +1125,7 @@ main() {
 
   echo "Grabbing current filesystem state"
   grab_dir_state oldstate.txt
-  # this directory is referenced so much that i decided to just check for it's existency almost immediately
+  # this directory is referenced so much that i decided to just check for it's existence almost immediately
   if [[ ! -d $HOME/.local/share/Trash/files ]]; then
     if mkdir -p "$HOME/.local/share/Trash/files"; then
       reverse_operation+=("undo_create_trash_dir")
@@ -1034,6 +1137,9 @@ main() {
   cd "$HOME"
   git clone -q https://github.com/MrSavageBanana/CTCT.git
   cd CTCT || exit_cleanly
+  if [[ ! -e $VIVALDIMODS_FILE || ! -e $MATT_DAMON_FILE ]]; then
+    perform_rollback
+  fi
   if [[ $EDIT_SITE == "true" ]]; then
     edit_sites
   fi
@@ -1043,7 +1149,7 @@ main() {
   up_to_date_JS
   # Service
   closetabs_creation() { sudo mv -f "$HOME/CTCT/closetabs.service" /etc/systemd/system; }
-  move_matt_daemon() { sudo mv -f "$HOME/CTCT/matt_damon.sh" /etc/; }
+  move_matt_daemon() { sudo mv -f "$MATT_DAMON_FILE" /etc/; }
   closetabs_service_enable() {
     set -o pipefail
     sudo systemctl daemon-reload
@@ -1076,7 +1182,7 @@ main() {
     fi
   fi
 
-  move_vivaldi_sh() { sudo mv -f "$HOME/CTCT/vivaldimods.sh" /etc/pacman.d/hooks.bin; }
+  move_vivaldi_sh() { sudo mv -f "$VIVALDIMODS_FILE" /etc/pacman.d/hooks.bin; }
   vivaldiupdate_hook() { sudo mv -f "$HOME/CTCT/vivaldiupdate.hook" /etc/pacman.d/hooks; }
   grub1_hook() { sudo mv -f "$HOME/CTCT/grub1.hook" /etc/pacman.d/hooks; }
   grub2_hook() { sudo mv -f "$HOME/CTCT/grub2.hook" /etc/pacman.d/hooks; }
@@ -1213,7 +1319,7 @@ main() {
     perform_rollback
   fi
 
-  if [[ "$restore_state" == "set -o xtrace" ]]; then
+  if [[ -z "${BASH_XTRACEFD:-}" ]]; then
     set -x
   fi
 
@@ -1248,9 +1354,16 @@ main() {
   sudo cp /boot/grub/grub.cfg "/boot/grub/grub.cfg.bak.${backup_timestamp}"
   set +e
 
-  if sudo grub-mkconfig -o /boot/grub/grub.cfg "$@"; then
+  # the sudo prompt will be captured into the GrubErrorMessage variable so we have to verify it before
+  if ! sudo -n -v 2>/dev/null; then
+    sudo -v
+  fi
+  # this is an important log to keep in case something goes wrong.
+  if GrubErrorMessage=$(sudo grub-mkconfig -o /boot/grub/grub.cfg 2>&1); then
     reverse_operation+=("restore_backup_grub_cfg_bak")
   else
+    echo_red "grub-mkconfig failed. Output:"
+    echo "$grub_err"
     perform_rollback
   fi
 
@@ -1284,7 +1397,7 @@ main() {
     #selected_end_date=$(dialog --clear --erase-on-exit --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
     selected_end_date=$(dialog --date-format "%m/%d/%y" --title "Select a Date" --calendar "Choose Ending Date" 0 0 0 0 0 3>&1 1>&2 2>&3)
     dialog --infobox "You picked ${selected_end_date:-nothing}" 0 0
-    if [[ "$restore_state" == "set -o xtrace" ]]; then
+    if [[ -z "${BASH_XTRACEFD:-}" ]]; then
       set -x
     fi
 
@@ -1293,14 +1406,14 @@ main() {
     set +x
     #selected_end_time=$(dialog --erase-on-exit --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
     selected_end_time=$(dialog --title "Select a Time" --timebox "Choose Ending Time" 0 0 0 0 0 3>&1 1>&2 2>&3)
-    dialog --infobox "You picked ${selected_end_time:-nothing}" 0 0
-    if [[ "$restore_state" == "set -o xtrace" ]]; then
+    dialog --infobox "You picked ${selected_end_time:-nothing} at ${selected_end_date:-nothing}" 0 0
+    if [[ -z "${BASH_XTRACEFD:-}" ]]; then
       set -x
     fi
     countdown 5
     # clear
   }
-  echo "DEBUG: DATE_MANUAL is currently '$DATE_MANUAL'"
+  # echo "DEBUG: DATE_MANUAL is currently '$DATE_MANUAL'"
   if [ "$DATE_MANUAL" == false ]; then
     select_end
     ending="$selected_end_date $selected_end_time"
@@ -1355,7 +1468,7 @@ main() {
     perform_rollback
   fi
 
-  if [[ "$restore_state" == "set -o xtrace" ]]; then
+  if [[ -z "${BASH_XTRACEFD:-}" ]]; then
     set -x
   fi
 
@@ -1374,13 +1487,13 @@ main() {
   done
 
   if sudo chmod 0440 /etc/sudoers.d/90-allowed-commands; then
-    reverse_operation+=("undo_chmod_90-allowed-commands")
+    reverse_operation+=("undo_chmod_usr_bin_systemctl")
   else
     perform_rollback
   fi
 
   if sudo chown root:root /usr/bin/systemctl; then # systemctl uses polkit for starting and disabling services, bypassing our sudo privileges
-    reverse_operation+=("undo_chmod_90-allowed-commands")
+    reverse_operation+=("undo_chown_usr_bin_systemctl")
   else
     perform_rollback
   fi
@@ -1404,7 +1517,11 @@ main() {
 
   # should probably put this in a temp file then validate then apply but rn, i am too lazy.
   if sudo grep -qF "@includedir" /etc/sudoers; then
-    sudo sed -i '/@includedir/{/@includedir \/etc\/sudoers\.d/!d;}' /etc/sudoers
+    if sudo sed -ibak '/@includedir/{/@includedir \/etc\/sudoers\.d/!d;}' /etc/sudoers; then
+      reverse_operation+=("undo_save_etc_sudoers")
+    else
+      perform_rollback
+    fi
   fi
 
   if ! sudo visudo --check >/dev/null; then
@@ -1424,7 +1541,11 @@ main() {
   done
 
   immuting "important_files2"
-  mv "$HOME/CTCT" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}"
+  if mv "$HOME/CTCT" "$HOME/.local/share/Trash/files/CTCT_${backup_timestamp}"; then
+    reverse_operation+=("undo_move_CTCT_dir")
+  else
+    perform_rollback
+  fi
   echo -e "\033[38;2;124;252;0m Completed Script \033[0m"
 }
 
@@ -1434,13 +1555,15 @@ VALIDATEOPT=0
 FIXOPT=0
 PRIVILEGEOPT=0
 PRINTPRIVILEGESOPT=0
-SITESOPT=0
-BLOCKLISTOPT=0
 DECRYPTOPT=0
 SHOWPASSWORDOPT=0
+SITEOPT=0
+BLOCKLISTOPT=0
+ADDJSSCRIPTOPT=0
 EDIT_BLOCKLIST=false
 DATE_MANUAL=false
-
+EDIT_JS=false
+BRUTEFORCEOPT=0
 while true; do
   case "$1" in
   -v | --validate)
@@ -1451,7 +1574,7 @@ while true; do
     FIXOPT=1
     shift
     ;;
-  -P | --privileges)
+  -P | --privilege)
     PRIVILEGEOPT=1
     PRIVILEGE_ARG="$2"
     shift 2
@@ -1460,8 +1583,8 @@ while true; do
     PRINTPRIVILEGESOPT=1
     shift
     ;;
-  -S | --sites)
-    SITESOPT=1
+  -S | --site)
+    SITEOPT=1
     EDIT_SITE=true
     CUSTOM_SITES+=("$2")
     shift 2
@@ -1501,14 +1624,18 @@ while true; do
     FLAG="$2"
     shift 2
     ;;
-  -H | --add-website-block)
-    IFS=':' read -r ADDBLOCK_IP_ADDR ADDBLOCK_ENTRY <<<"$2"
-    ADDBLOCK=1
-    multi_flag_error_check "--add-website-block" "IP_ADDR" "$ADDBLOCK_IP_ADDR" "$ADDBLOCK_ENTRY" "HOST_ENTRY"
-    shift 2
-    ;;
   -C | --check-all-focus)
     CHECKALLFOCUSOPT=1
+    shift
+    ;;
+  -j | --add-js-script)
+    ADDJSSCRIPTOPT=1
+    EDIT_JS=true
+    customUserJSScripts+=("$2")
+    shift 2
+    ;;
+  -B | --brute-force)
+    BRUTEFORCEOPT=1
     shift
     ;;
   -t | --show-tabs)
@@ -1538,27 +1665,24 @@ while true; do
   esac
 done
 # Claude's idea on how to ensure the flags are standalone without writing the same code for each standalone flag
-mutually_exclusive_flags=("$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT" "$SITESOPT" "$BLOCKLISTOPT" "$DECRYPTOPT" "$SHOWPASSWORDOPT" "$ADDWEBSITEOPT" "$ADDPROCCESSOPT" "$ADDFILEOPT" "$DATEOPT" "$TIMEOPT" "$CHECKCURRENTFOCUSOPT" "$SHOWTABSOPT" "$ADDBLOCK" "$CHECKALLFOCUSOPT")
+mutually_exclusive_flags=("$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT" "$SITEOPT" "$BLOCKLISTOPT" "$DECRYPTOPT" "$SHOWPASSWORDOPT" "$ADDWEBSITEOPT" "$ADDPROCCESSOPT" "$ADDFILEOPT" "$DATEOPT" "$TIMEOPT" "$CHECKCURRENTFOCUSOPT" "$SHOWTABSOPT" "$CHECKALLFOCUSOPT" "$ADDJSSCRIPTOPT" "$BRUTEFORCEOPT")
 
 total_set=0
 for opt in "${mutually_exclusive_flags[@]}"; do
   ((opt == 1)) && ((++total_set))
 done
-standalone_values=("$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT" "$SHOWTABSOPT" "$CHECKALLFOCUSOPT")
-standalone_names=("--validate" "--fix" "--privileges" "--print-privileges")
+standalone_values=("$VALIDATEOPT" "$FIXOPT" "$PRIVILEGEOPT" "$PRINTPRIVILEGESOPT" "$SHOWTABSOPT" "$CHECKALLFOCUSOPT" "$BRUTEFORCEOPT")
+standalone_names=("--validate" "--fix" "--privileges" "--print-privileges" "--show-tabs" "--check-all-focus" "--brute-force")
 for i in "${!standalone_values[@]}"; do
   if [[ "${standalone_values[$i]}" -eq 1 && $total_set -gt 1 ]]; then
     echo "${standalone_names[$i]} is meant to be used on it's own"
     exit 2
+    exit 2
   fi
 done
-if [[ $SHOWPASSWORDOPT -eq 1 && $DECRYPTOPT -eq 0 ]]; then
-  echo "--decrypt is to be used with --show-password"
-  exit 2
-fi
 
 other_opts_set=$((total_set - DECRYPTOPT - SHOWPASSWORDOPT))
-if [[ $DECRYPTOPT -eq 1 && $other_opts_set -gt 0 ]]; then
+if [[ $DECRYPTOPT -eq 1 && $other_opts_set -gt 0 || $SHOWPASSWORDOPT -eq 1 && $DECRYPTOPT -eq 0 ]]; then
   echo_red "--decrypt (with optional --show-password) is to be used on its own"
   exit 2
 fi
@@ -1576,7 +1700,7 @@ if [[ $FIXOPT -eq 1 ]]; then
   exit
 fi
 if [[ $PRIVILEGEOPT -eq 1 ]]; then
-  edit_privileges "$PRIVILEGE_ARG"
+  edit_privilege "$PRIVILEGE_ARG"
   exit
 fi
 if [[ $PRINTPRIVILEGESOPT -eq 1 ]]; then
@@ -1632,6 +1756,10 @@ fi
 
 if [[ $DATEOPT -eq 1 ]]; then
   verify_date_syntax
+fi
+if [[ $BRUTEFORCEOPT -eq 1 ]]; then
+  brute_force
+  exit
 fi
 main
 exit
