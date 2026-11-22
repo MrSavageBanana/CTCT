@@ -140,7 +140,7 @@ focus() {
   for pid2 in "${PIDS[@]}"; do
     echo "KILLED $(cat /proc/"${pid2}"/cmdline | head -n 1)"
     # TODO: Show why a process was killed like i did on line 97 for closetabs_focus. Even though saying the process it killed could be good enough, we can't take chances if the script decides to kill a random process
-    kill "$pid2"
+    sudo kill "$pid2"
   done
 }
 focus_attr() {
@@ -200,7 +200,7 @@ check_browser() {
   if [[ "$browser" != *"vivaldi"* ]]; then
 
     for pid2 in "${PIDS[@]}"; do
-      kill "$pid2"
+      sudo kill "$pid2"
     done
     return
   fi
@@ -209,7 +209,7 @@ check_browser() {
   cmdline=$(pgrep -fa "$browser" | grep -v "type" | awk '{$1=""; print $0}' | grep --only-matching -- "--remote-debugging-port=9222")
   if [[ "$cmdline" != "--remote-debugging-port=9222" ]]; then
     for pid3 in "${PIDS[@]}"; do
-      kill "$pid3"
+      sudo kill "$pid3"
     done
   elif [[ "$cmdline" == "--remote-debugging-port=9222" ]]; then
     # apparantely, i can see these echos in journalctl so i am going to add them even if they aren't really ever seen
