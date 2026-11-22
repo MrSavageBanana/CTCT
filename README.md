@@ -23,9 +23,13 @@ $$ |  $$\   $$ |   $$ |  $$\   $$ |
   <br>
   <br>
   <div align="center">
+    <a href="#requirements">Requirements</a>
+    <span> · </span>
     <a href="#quick-start">Quick Start</a>
     <span> · </span>
     <a href="#usage">Usage</a>
+    <span> · </span>
+    <a href="#roadmap">Roadmap</a>
     <span> · </span>
     <a href="#contributing">Contributing</a>
   </div>
@@ -34,7 +38,7 @@ $$ |  $$\   $$ |   $$ |  $$\   $$ |
 </div>
 
 
-### What is CTCT not?
+## What is CTCT not?
 - a screen time usage tracker
 - a website blocker with scheduled downtime
 - a website blocker that lets you turn off restrictions
@@ -161,9 +165,12 @@ Using Arch Linux
 If running the following says "Arch Linux"
 
 ```bash
-grep -oP "^PRETTY_NAME=[\"']\K[^\"']+" /etc/os-release
-
+grep -oP \
+"^PRETTY_NAME=[\"']\K[^\"']+" \
+/etc/os-release
 ```
+
+</td>
 <td>
 
 Switch to Arch Linux<br>OR<br> [get notified](https://github.com/MrSavageBanana/CTCT/issues/7) when your distro is supported
@@ -178,7 +185,7 @@ Switch to Arch Linux<br>OR<br> [get notified](https://github.com/MrSavageBanana/
 
 #### Dependencies
 > [!TIP]
-> The script will warn you if you are missing any of the [dependencies](#all-dependencies)
+> The script will warn you if you are missing any of the [dependencies](#all-dependencies)<br>
 > If you meet all the [requirements](#requirements), proceed to [quick start](#quick-start)
 <details> 
 <summary><h4><a id="all-dependencies"></a>All Dependencies (50)</h4></summary>
@@ -234,32 +241,31 @@ Switch to Arch Linux<br>OR<br> [get notified](https://github.com/MrSavageBanana/
 49. go
 50. tle
 
+---
 </details>
 
 
 ## Quick Start <a id="quick-start"></a>
 > [!WARNING]
-> Read [the script](https://github.com/MrSavageBanana/CTCT/blob/main/CTCT.sh#L1114) 
+> Read [the script](https://github.com/MrSavageBanana/CTCT/blob/main/CTCT.sh#L1114).&nbsp;
 > Know what it does to your system
-<details>
 <summary>
 <h3 style="display: inline-flex; align-items: center; gap: 8px; margin: 0;">
   <a href="#on-linux">
     <img src="assets/tuxed.png" width="30" height="36" align="absmiddle" alt="Tux">
   </a>
-    &nbsp;On Linux <a id="on-linux"></a>
+    &nbsp;Installing On Linux <a id="on-linux"></a>
 </h3></summary>
 Download the script on your computer:
 
 ```bash
 curl https://raw.githubusercontent.com/MrSavageBanana/CTCT/main/heads/CTCT.sh > CTCT.sh
 ```
-**Read** [**the script!:**](https://github.com/MrSavageBanana/CTCT/blob/main/CTCT.sh#L1114)
+Read [the script](https://github.com/MrSavageBanana/CTCT/blob/main/CTCT.sh#L1114)!:
 ```bash
 less CTCT.sh
 ```
 After you read the script and approve, go to [Usage](#usage)
-</details>
 
 
 ## Usage <a id="usage"></a>
@@ -267,13 +273,14 @@ Get started interactively:
 ```bash
 bash CTCT.sh 
 ```
-See all options at a glance:
+See [all options](#all-options) at a glance:
 ```bash 
 bash CTCT.sh -h
 ```
 
 <details>
-<summary><h3>All Options</h3></summary>
+<summary><h4>All Options</h3></summary>
+<a id="all-options"></a>
 <table>
 <thead>
 <tr>
@@ -507,35 +514,41 @@ CTCT.sh --show-password
 </table>
 
 **DURATION FORMAT** <a id="duration-format"></a>
-DURATION uses natural language to specify how long the focus lasts.
-&nbsp;&nbsp;Examples:
-&nbsp;&nbsp;&nbsp;&nbsp;**'3 min'**           ends the focus in 3 minutes
-&nbsp;&nbsp;&nbsp;&nbsp;**'3 days 2 hours'**  ends the focus in 3 days and 2 hours
-&nbsp;&nbsp;&nbsp;&nbsp;**'3 friday'**        ends the focus 3 fridays from now
-&nbsp;&nbsp;&nbsp;&nbsp;**'sunday'**          ends the focus the next sunday
-&nbsp;&nbsp;&nbsp;&nbsp;**'tomorrow 12am'**   ends the focus at 12:00 AM tomorrow
+DURATION uses natural language to specify how long the focus lasts.<br>
+&nbsp;&nbsp;Examples:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;**'3 min'**           ends the focus in 3 minutes<br>
+&nbsp;&nbsp;&nbsp;&nbsp;**'3 days 2 hours'**  ends the focus in 3 days and 2 hours<br>
+&nbsp;&nbsp;&nbsp;&nbsp;**'3 friday'**        ends the focus 3 fridays from now<br>
+&nbsp;&nbsp;&nbsp;&nbsp;**'sunday'**          ends the focus the next sunday<br>
+&nbsp;&nbsp;&nbsp;&nbsp;**'tomorrow 12am'**   ends the focus at 12:00 AM tomorrow<br>
 
+---
 </details>
 
 ### Feature Showcase
-| | Feature
-|:----------------------------------------------- |:------------------------------------ 
-| | Remove distraction without browser extensions
-| | Closes blocked websites even with VPN
-| | Block any other app.
-| | close other browsers
-| | make files uneditable. Useful for dotfiles.
+<!-- | | Feature -->
+<!-- |:----------------------------------------------- |:------------------------------------  -->
+<!-- | | Remove distraction without browser extensions -->
+<!-- | | Closes blocked websites even with VPN -->
+<!-- | | Block any other app. -->
+<!-- | | close other browsers -->
+<!-- | | make files uneditable. Useful for dotfiles. -->
+* Remove distraction without browser extensions
+* Closes blocked websites even with VPN
+* Block any other app.
+* close other browsers
+* make files uneditable. Useful for dotfiles.
 
 
-## Roadmap
+## Roadmap <a id="roadmap"></a>
 These are features that are planned on being added. 
 Of course, fixing bugs comes first. 
 
-### Soon:
+#### Soon:
 - Add support for more browsers
 - Add a configuration file to make more reproducible
 - Add support for Windows
-### Later in the roadmap:
+#### Later in the roadmap:
 - Add support for multi-users in Linux
 - Add support for multi-users in Windows
 - Add support for MacOS
@@ -545,9 +558,9 @@ Of course, fixing bugs comes first.
 - Make it pretty. Likely using [beddu](https://github.com/mjsarfatti/beddu)
 
 ## Contributing <a id="contributing"></a>
-Have a feature request? Start a discussion by clicking [here](https://github.com/MrSavageBanana/CTCT/discussions/new?category=ideas-feature-requests)
-Found a bug? Click [here](https://github.com/MrSavageBanana/CTCT/issues/new?template=bug_report.yml) to submit
-If my code sucks, looks bad or poorly designed please [open an issue](https://github.com/MrSavageBanana/CTCT/issues/new/choose) and let me know!
+Have a feature request? Start a discussion by clicking [here](https://github.com/MrSavageBanana/CTCT/discussions/new?category=ideas-feature-requests)<br>
+Found a bug? Click [here](https://github.com/MrSavageBanana/CTCT/issues/new?template=bug_report.yml) to submit<br>
+If my code sucks, looks bad or poorly designed please [open an issue](https://github.com/MrSavageBanana/CTCT/issues/new/choose) and let me know!<br>
 
 See [CONTRIBUTING](https://github.com/MrSavageBanana/CTCT?tab=contributing-ov-file) for more details if needed (1-5 min read)
 

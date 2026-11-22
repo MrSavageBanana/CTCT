@@ -83,11 +83,12 @@ Requesting a feature is no guarantee it will be added.
 ## Issues <a id="issues "></a>
 
 ### Working on issues <a id="working_on_issues"></a>
-Please feel free to take on any issue [that's currently open]. Feel free to resolve any issue that you would enjoy working on even if it happens to be a low priority.
+Please feel free to take on any issue [that's currently open](https://github.com/MrSavageBanana/CTCT/issues?q=is%3Aissue+state%3Aopen) . Feel free to resolve any issue that you would enjoy working on even if it happens to be a low priority.
 
 <!-- TODO: gotta add the booting into another Linux distro as a currently open bug -->
 ### Indicating interest in issues <a id="indicating_interest_in_issues"></a>
-Upvote issues you deem important by clicking the [+😊] button and the 👍. Avoid comments like "+1" or "me too" as they clutter the discussion and make it harder to prioritize requests.
+Upvote issues you deem important by clicking the [+<img src="assets/smile-beam-svgrepo-com-black.svg" width="16" height="16" style="filter: invert(1);"> ] button and the <img src="assets/thumbs-up-svgrepo-com.svg" width="16" height="16" style="filter: invert(1);">. Avoid comments like "+1" or "me too" as they clutter the discussion and make it harder to prioritize requests.
+
 ### Writing Good Bug Reports <a id="writing_good_bug_reports"></a>
  Please include the following with each issue (run [the code](#bug-report) to automatically get **most** of these. <br>'*' indicates what cannot be automatically discovered)
 - *A description of the issue
@@ -137,7 +138,7 @@ pacman --version | head -n 2
 Before submitting your work, do the following:
 1. run bash -n
 ```bash
-bash -n <script> && echo $?
+bash -n <script>; echo $?
 ```
 If the above command doesn't print 0, you have errors. Fix them.
 
@@ -179,13 +180,13 @@ The main script.
 3. Avoid echoing messages if possible. Doesn't apply to failed commands
 4. use echo_red only if it is something the user should act on.
 
-#### Helper Variables and Arrays (lines )
+#### Helper Variables and Arrays (lines 7 - 143)
 - these are variables that are used very commonly so makes sense to always initialize them
-#### Helper functions (lines )
+#### Helper functions (lines 215 - 953)
 - these are all functions other than the main function
-#### Rollback Functions (lines )
+#### Rollback Functions (lines 954 - 1112)
 - these are functions that are used **only** in the main function and **only** to rollback a command if it failed.
-#### Main function (lines )
+#### Main function (lines 1150 - 1689)
 - Any command effecting the user's system **must** be wrapped in the following logic
 ```bash
 if <command>; then
@@ -200,7 +201,7 @@ If the command fails, perform_rollback is run, running all of the rollback funct
 <insert gif of the man going backwards>
 
 <details>
-<summary><h4><a id="The flag logic (lines )"></a>The flag logic (lines )</h4></summary>
+<summary><h4><a id="the-flag-logic"></a>The flag logic (lines 1691 - 1903 )</h4></summary>
 
 - The Initial variables for each flag. Boolean logic. Set to the equivalent of 'false'
 - the case logic for each flag
